@@ -25,7 +25,7 @@
   ],
   "main": "./packages/extension/out/program/extension.js",
   "activationEvents": [
-    "*",
+    "onStartupFinished",
     "onFileSystem:readme"
   ],
   "contributes": {},

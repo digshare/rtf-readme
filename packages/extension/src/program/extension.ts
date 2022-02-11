@@ -572,9 +572,8 @@ async function hintIfNotRead(absolutePath: string) {
           await writeToConfigFile(workspacePath);
 
           let result = await vscode.window.showInformationMessage(
-            `Please README of file ${absolutePath}.`,
+            `Please read the README of file ${absolutePath}.`,
             'OK',
-            'Already Read',
             'Read Later',
           );
 
@@ -598,8 +597,6 @@ async function hintIfNotRead(absolutePath: string) {
                 vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
               );
             }
-          } else if (result === 'Already Read') {
-            await readREADMEFile(readmeAbsolutePath);
           }
 
           break;
@@ -607,6 +604,57 @@ async function hintIfNotRead(absolutePath: string) {
       }
     }
   }
+}
+
+async function handleSpecialFilesAndConditionalHint(
+  uri: vscode.Uri,
+  eventType: vscode.FileChangeType | 4,
+) {
+  let filePath = uri.path;
+  let fileName = Path.posix.basename(filePath);
+
+  if (fileName === CONFIG_FILENAME) {
+    switch (eventType) {
+      case vscode.FileChangeType.Changed:
+      case vscode.FileChangeType.Created:
+      case 4:
+        await readConfigFile(uri);
+
+        break;
+
+      case vscode.FileChangeType.Deleted:
+        deleteConfigFile(uri);
+
+        break;
+
+      default:
+        console.error('Unexpected event type!');
+
+        break;
+    }
+  } else if (README_FILE_NAMES.includes(fileName)) {
+    switch (eventType) {
+      case vscode.FileChangeType.Changed:
+      case vscode.FileChangeType.Created:
+      case 4:
+        await loadREADMEFile(filePath);
+        await readREADMEFile(filePath);
+
+        break;
+
+      case vscode.FileChangeType.Deleted:
+        deleteREADMEFile(filePath);
+
+        break;
+
+      default:
+        console.error('Unexpected event type!');
+
+        break;
+    }
+  }
+
+  await hintIfNotRead(filePath);
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -626,52 +674,13 @@ export async function activate(context: vscode.ExtensionContext) {
           fileType: 'file' | 'dir';
         };
 
-        let filePath = eventWithFilePath.filePath;
-        let fileName = Path.posix.basename(filePath);
-
-        let uri = vscode.Uri.from({scheme: 'file', path: filePath});
+        let uri = vscode.Uri.from({
+          scheme: 'file',
+          path: eventWithFilePath.filePath,
+        });
 
         if (eventWithFilePath.fileType === 'file') {
-          if (fileName === CONFIG_FILENAME) {
-            switch (event.type) {
-              case vscode.FileChangeType.Changed:
-              case vscode.FileChangeType.Created:
-                await readConfigFile(uri);
-
-                break;
-
-              case vscode.FileChangeType.Deleted:
-                deleteConfigFile(uri);
-
-                break;
-
-              default:
-                console.error('Unexpected event type!');
-
-                break;
-            }
-          } else if (README_FILE_NAMES.includes(fileName)) {
-            switch (event.type) {
-              case vscode.FileChangeType.Changed:
-              case vscode.FileChangeType.Created:
-                await loadREADMEFile(filePath);
-                await readREADMEFile(filePath);
-
-                break;
-
-              case vscode.FileChangeType.Deleted:
-                deleteREADMEFile(filePath);
-
-                break;
-
-              default:
-                console.error('Unexpected event type!');
-
-                break;
-            }
-          }
-
-          await hintIfNotRead(filePath);
+          await handleSpecialFilesAndConditionalHint(uri, event.type);
         }
       }
     }),
@@ -739,6 +748,10 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  await loadFiles();
+
+  await writeToConfigFiles();
+
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     let workspacePosixPath = workspaceFolder.uri.path;
     let workspacePath = posixPathToPath(workspacePosixPath);
@@ -753,10 +766,6 @@ export async function activate(context: vscode.ExtensionContext) {
     workspacePathToGitDict[workspacePosixPath] = simpleGitObject;
   }
 
-  await loadFiles();
-
-  await writeToConfigFiles();
-
   for (let document of vscode.workspace.textDocuments) {
     let absolutePath = pathToPosixPath(document.fileName);
 
@@ -764,7 +773,10 @@ export async function activate(context: vscode.ExtensionContext) {
       continue;
     }
 
-    await hintIfNotRead(absolutePath);
+    await handleSpecialFilesAndConditionalHint(
+      vscode.Uri.from({scheme: 'file', path: absolutePath}),
+      4,
+    );
   }
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {

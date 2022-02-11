@@ -55,7 +55,6 @@ async function readConfigFile(uri: vscode.Uri): Promise<void> {
         }
 
         user.files = user.files || [];
-        user.unreadFiles = user.unreadFiles || [];
 
         if (user.files.length <= 1) {
           continue;
@@ -294,15 +293,10 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
           name: username,
           email,
           files: [],
-          unreadFiles: [],
         };
 
         config.users.push(user);
       }
-
-      _.remove(user.unreadFiles, unreadFile => {
-        return unreadFile.path === relativePath;
-      });
 
       if (readme.commit === '') {
         await writeToConfigFile(workspacePath);
@@ -481,7 +475,6 @@ async function hintIfNotRead(absolutePath: string) {
         name: username,
         email,
         files: [],
-        unreadFiles: [],
       };
 
       config.users.push(user);
@@ -564,11 +557,6 @@ async function hintIfNotRead(absolutePath: string) {
 
       for (let filesPattern of readme.filesPatterns) {
         if (minimatch(relativePath, filesPattern)) {
-          user.unreadFiles.push({
-            path: readme.path,
-            commit: readme.commit,
-          });
-
           await writeToConfigFile(workspacePath);
 
           let result = await vscode.window.showInformationMessage(

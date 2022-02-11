@@ -15,5 +15,4 @@ export interface UserInfo {
   name: string;
   email: string;
   files: {path: string; commit: string}[];
-  unreadFiles: {path: string; commit: string}[];
 }

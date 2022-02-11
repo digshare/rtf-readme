@@ -1,0 +1,19 @@
+{
+	"name": "please-readme-cli",
+	"publisher": "mufan",
+	"description": "",
+	"version": "0.1.0",
+	"license": "MIT",
+	"bin": {
+		"readme-cli": "out/program/readme-cli.js"
+	},
+	"dependencies": {
+		"clime": "^0.5.14",
+		"lodash": "^4.17.21",
+		"please-readme.lib": "*",
+		"simple-git": "^3.1.1"
+	},
+	"scripts": {
+		"debug": "tsc -p ./tsconfig.json && node out/program/readme-cli.js ."
+	}
+}

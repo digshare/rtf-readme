@@ -1,0 +1,50 @@
+{
+  "name": "rtf-readme",
+  "publisher": "Mufan",
+  "displayName": "PleaseREADME",
+  "description": "README hint for users who need to read the README",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.63.0"
+  },
+  "license": "MIT",
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "README"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/makeflow/rtf-readme"
+  },
+  "files": [
+    "./packages/extension/out/program",
+    "./packages/lib/out/library"
+  ],
+  "main": "./packages/extension/out/program/extension.js",
+  "activationEvents": [
+    "*",
+    "onFileSystem:readme"
+  ],
+  "contributes": {},
+  "scripts": {
+    "vscode:prepublish": "yarn run compile",
+    "compile": "tsc --build ./tsconfig.full.json",
+    "watch": "tsc --build ./tsconfig.full.json -watch",
+    "pretest": "yarn run compile && yarn run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "eslint": "^8.6.0",
+    "prettier": "^2.5.1",
+    "typescript": "^4.5.5"
+  },
+  "workspaces": {
+    "packages": [
+      "packages/**"
+    ]
+  }
+}

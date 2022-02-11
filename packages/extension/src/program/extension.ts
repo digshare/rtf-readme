@@ -30,7 +30,7 @@ let workspacePathToWatchDisposableDict: {
   [workspacePath: string]: vscode.Disposable;
 } = {};
 
-async function readConfigFile(uri: vscode.Uri): Promise<void> {
+async function readCacheFile(uri: vscode.Uri): Promise<void> {
   let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 
   let path = uri.path;
@@ -106,7 +106,7 @@ async function readConfigFile(uri: vscode.Uri): Promise<void> {
       }
 
       if (configModified) {
-        await writeToConfigFile(workspacePath);
+        await writeToCacheFile(workspacePath);
       }
     } catch (e) {
       console.error(`The config file ${path} is not valid.\n`, e);
@@ -120,7 +120,7 @@ async function readConfigFile(uri: vscode.Uri): Promise<void> {
   }
 }
 
-function deleteConfigFile(uri: vscode.Uri): void {
+function deleteCacheFile(uri: vscode.Uri): void {
   let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 
   let path = uri.path;
@@ -299,7 +299,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
       }
 
       if (readme.commit === '') {
-        await writeToConfigFile(workspacePath);
+        await writeToCacheFile(workspacePath);
 
         continue;
       }
@@ -312,7 +312,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
         file.commit = readme.commit;
       }
 
-      await writeToConfigFile(workspacePath);
+      await writeToCacheFile(workspacePath);
     }
   }
 }
@@ -344,17 +344,17 @@ function deleteREADMEFile(absolutePath: string) {
   }
 }
 
-async function loadConfigFile(workspacePath: string) {
-  let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
+async function loadCacheFile(workspacePath: string) {
+  let cacheFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
 
   try {
     let stat = await vscode.workspace.fs.stat(
-      vscode.Uri.from({scheme: 'file', path: configFilePath}),
+      vscode.Uri.from({scheme: 'file', path: cacheFilePath}),
     );
 
     if (stat.type === vscode.FileType.File) {
-      await readConfigFile(
-        vscode.Uri.from({scheme: 'file', path: configFilePath}),
+      await readCacheFile(
+        vscode.Uri.from({scheme: 'file', path: cacheFilePath}),
       );
     }
   } catch (e) {
@@ -365,12 +365,12 @@ async function loadConfigFile(workspacePath: string) {
   }
 }
 
-async function loadConfigFiles() {
+async function loadCacheFiles() {
   let workspaceFolders = vscode.workspace.workspaceFolders;
 
   if (workspaceFolders) {
     for (let workspaceFolder of workspaceFolders) {
-      loadConfigFile(workspaceFolder.uri.path);
+      loadCacheFile(workspaceFolder.uri.path);
     }
   }
 }
@@ -413,14 +413,14 @@ async function walkThroughFilesToLoadREADME(
 }
 
 async function loadFiles(): Promise<void> {
-  await loadConfigFiles();
+  await loadCacheFiles();
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     await walkThroughFilesToLoadREADME(workspaceFolder.uri.path);
   }
 }
 
-async function writeToConfigFile(workspacePath: string) {
+async function writeToCacheFile(workspacePath: string) {
   let pleaseREADMEConfig = pleaseREADMEConfigs[workspacePath] || {
     files: [],
     users: [],
@@ -433,9 +433,9 @@ async function writeToConfigFile(workspacePath: string) {
 
   let stringToWrite = JSON.stringify(pleaseREADMEConfigsClone, undefined, 2);
 
-  let configFileContent = (await vscode.workspace.fs.readFile(uri)).toString();
+  let cacheFileContent = (await vscode.workspace.fs.readFile(uri)).toString();
 
-  if (stringToWrite !== configFileContent) {
+  if (stringToWrite !== cacheFileContent) {
     await vscode.workspace.fs.writeFile(
       uri,
       new TextEncoder().encode(stringToWrite),
@@ -443,9 +443,9 @@ async function writeToConfigFile(workspacePath: string) {
   }
 }
 
-async function writeToConfigFiles() {
+async function writeToCacheFiles() {
   for (const workspacePath of Object.keys(pleaseREADMEConfigs)) {
-    await writeToConfigFile(workspacePath);
+    await writeToCacheFile(workspacePath);
   }
 }
 
@@ -479,7 +479,7 @@ async function hintIfNotRead(absolutePath: string) {
 
       config.users.push(user);
 
-      await writeToConfigFile(workspacePath);
+      await writeToCacheFile(workspacePath);
     }
 
     for (let readme of config.files) {
@@ -515,7 +515,7 @@ async function hintIfNotRead(absolutePath: string) {
               if (Number(count) > 0) {
                 file.commit = commitInfo.hash;
 
-                await writeToConfigFile(workspacePath);
+                await writeToCacheFile(workspacePath);
               }
 
               break;
@@ -531,7 +531,7 @@ async function hintIfNotRead(absolutePath: string) {
 
               user.files.push(file);
 
-              await writeToConfigFile(workspacePath);
+              await writeToCacheFile(workspacePath);
 
               break;
             }
@@ -557,7 +557,7 @@ async function hintIfNotRead(absolutePath: string) {
 
       for (let filesPattern of readme.filesPatterns) {
         if (minimatch(relativePath, filesPattern)) {
-          await writeToConfigFile(workspacePath);
+          await writeToCacheFile(workspacePath);
 
           let result = await vscode.window.showInformationMessage(
             `Please read the README of file ${absolutePath}.`,
@@ -606,12 +606,12 @@ async function handleSpecialFilesAndConditionalHint(
       case vscode.FileChangeType.Changed:
       case vscode.FileChangeType.Created:
       case 4:
-        await readConfigFile(uri);
+        await readCacheFile(uri);
 
         break;
 
       case vscode.FileChangeType.Deleted:
-        deleteConfigFile(uri);
+        deleteCacheFile(uri);
 
         break;
 
@@ -684,7 +684,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         workspacePathToWatchDisposableDict[addedWorkspacePath] = disposable;
 
-        loadConfigFile(addedWorkspacePath);
+        loadCacheFile(addedWorkspacePath);
 
         let simpleGitObject: SimpleGit | undefined = getSimpleGitObject(
           posixPathToPath(addedWorkspacePath),
@@ -738,7 +738,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   await loadFiles();
 
-  await writeToConfigFiles();
+  await writeToCacheFiles();
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     let workspacePosixPath = workspaceFolder.uri.path;

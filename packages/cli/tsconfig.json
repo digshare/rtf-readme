@@ -9,7 +9,8 @@
     "rootDir": "src",
     "strict": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true
   },
   "references": [{"path": "../lib"}]
 }

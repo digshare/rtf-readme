@@ -1,4 +1,4 @@
-# rtf-readme-packages
+# rtf-readme
 
 Just another awesome magic.
 

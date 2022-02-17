@@ -1,4 +1,4 @@
-# rtf-readme-packages
+# vscode-rtf-readme
 
 Just another awesome magic.
 

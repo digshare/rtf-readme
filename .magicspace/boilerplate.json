@@ -1,0 +1,38 @@
+{
+  "extends": "@mufan/code-boilerplates/typescript",
+  "options": {
+    "name": "rtf-readme-packages",
+    "license": "MIT",
+    "author": "Chengdu Mufan Technology Co., Ltd.",
+    "packages": [
+      {
+        "name": "rtf-readme",
+        "tsProjects": [
+          {
+            "name": "library"
+          },
+          {
+            "name": "cli",
+            "references": [
+              "library"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "vscode-rtf-readme",
+        "tsProjects": [
+          {
+            "name": "extension",
+            "references": [
+              {
+                "package": "rtf-readme",
+                "project": "library"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

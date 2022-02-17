@@ -13,12 +13,8 @@ import {
   README_FILE_NAMES,
   getFilesPatternsOfREADME,
   MAGIC_GIT_INITIAL_COMMIT,
+  posixPathToPath,
 } from 'please-readme.lib';
-
-enum CommitType {
-  READMEChangedCommitType,
-  FilesChangedCommitType,
-}
 
 class READMECliOptions extends Options {
   @option({
@@ -116,328 +112,154 @@ export default class extends Command {
 
     let readmePaths = walkThroughFilesToGetREADME(workspacePath);
 
-    console.log(readmePaths);
-
     if (!readmePaths) {
       return;
     }
 
-    let usersString = await simpleGitObject.raw('shortlog', '-se', 'HEAD');
-    let usersRegExp = /\d+\s+(?:([^]+?)\s(<\S+\@\S+>))/g;
-    let users = [];
+    let workspacePosixPath = pathToPosixPath(workspacePath);
 
-    while (true) {
-      let userInfo = usersRegExp.exec(usersString);
-
-      if (!userInfo) {
-        break;
-      }
-
-      let username = userInfo[1];
-      let email = userInfo[2].match(/<([^]+)>/)![1];
-      users.push({name: username, email});
-    }
-
-    console.log(users);
+    let readmeFilesPatterns: {
+      readmePosixRelativePath: string;
+      filesPatterns: string[];
+    }[] = [];
 
     for (let readmePath of readmePaths) {
-      console.log('readmePath', readmePath);
-
-      for (let user of users) {
-        console.log('user', user, readmePath);
-
-        let readmeRelativePath = Path.relative(workspacePath, readmePath);
-        let readmePosixRelativePath = pathToPosixPath(readmeRelativePath);
-
-        let latestCommitRead = cache.users
-          ?.find(
-            userToMatch =>
-              user.name === userToMatch.name &&
-              user.email === userToMatch.email,
-          )
-          ?.files?.find(file => file.path === readmePosixRelativePath)?.commit;
-
-        if (
-          !!latestCommitRead &&
-          !(await doesCommitExist(
-            simpleGitObject,
-            latestCommitRead,
-            readmeRelativePath,
-          ))
-        ) {
-          latestCommitRead = undefined;
-        }
-
-        if (!latestCommitRead) {
-          let readmeCommitHashsByCurrentUser = _.compact(
-            (
-              await simpleGitObject.raw(
-                'log',
-                `--author=${user.name}`,
-                '--pretty=format:%H',
-                readmePosixRelativePath,
-              )
-            ).split('\n'),
-          );
-
-          let readmeCommitHashs = _.compact(
-            (
-              await simpleGitObject.raw(
-                'log',
-                '--pretty=format:%H',
-                readmePosixRelativePath,
-              )
-            ).split('\n'),
-          );
-
-          let commitHashsByCurrentUser = _.compact(
-            (
-              await simpleGitObject.raw(
-                'log',
-                `--author=${user.name}`,
-                '--pretty=format:%H',
-              )
-            ).split('\n'),
-          );
-
-          let commitHashs = _.compact(
-            (
-              await simpleGitObject.raw(
-                'rev-list',
-                `${
-                  readmeCommitHashsByCurrentUser.length > 0
-                    ? readmeCommitHashsByCurrentUser[0]
-                    : MAGIC_GIT_INITIAL_COMMIT
-                }..HEAD`,
-              )
-            ).split('\n'),
-          ).reverse();
-
-          let initialCommit = commitHashs[0];
-
-          let commitHashsWithType = _.compact(
-            commitHashs.map(commitHash => {
-              if (commitHashsByCurrentUser.includes(commitHash)) {
-                return {commitHash, type: CommitType.FilesChangedCommitType};
-              }
-
-              if (readmeCommitHashs.includes(commitHash)) {
-                return {commitHash, type: CommitType.READMEChangedCommitType};
-              }
-
-              return undefined;
-            }),
-          );
-
-          // if (readmeCommitHashsByCurrentUser.length === 0) {
-          //   commitHashsWithType = commitHashsWithType.slice(
-          //     Math.max(0, commitHashsWithType.length - 50),
-          //     commitHashs.length,
-          //   );
-          // }
-
-          await findREADMENotRead(
-            commitHashsWithType,
-            readmeCommitHashsByCurrentUser.length === 0 &&
-              commitHashsWithType[0].commitHash === initialCommit,
-          );
-        } else {
-          let commitHashs = (
-            await simpleGitObject.raw('rev-list', `${latestCommitRead}..HEAD`)
-          )
-            .trim()
-            .split('\n')
-            .reverse();
-
-          let readmeCommitHashsByCurrentUser = _.compact(
-            (
-              await simpleGitObject.raw(
-                'log',
-                `--author=${user.name}`,
-                '--pretty=format:%H',
-                readmePosixRelativePath,
-              )
-            ).split('\n'),
-          );
-
-          let commitHashsByCurrentUser = _.compact(
-            (
-              await simpleGitObject.raw(
-                'log',
-                `--author=${user.name}`,
-                '--pretty=format:%H',
-              )
-            ).split('\n'),
-          );
-
-          let readmeCommitHashs = _.compact(
-            (
-              await simpleGitObject.raw(
-                'log',
-                '--pretty=format:%H',
-                readmePosixRelativePath,
-              )
-            ).split('\n'),
-          );
-
-          if (
-            readmeCommitHashsByCurrentUser.length > 0 &&
-            commitHashs.includes(readmeCommitHashsByCurrentUser[0])
-          ) {
-            commitHashs = _.compact(
-              (
-                await simpleGitObject.raw(
-                  'rev-list',
-                  `${readmeCommitHashsByCurrentUser[0]}..HEAD`,
-                )
-              ).split('\n'),
-            ).reverse();
+      let readmeContent = await new Promise<string>((resolve, reject) =>
+        FS.readFile(readmePath, (err, data) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve(data.toString());
           }
+        }),
+      );
 
-          let commitHashsWithType = _.compact(
-            commitHashs.map(commitHash => {
-              if (readmeCommitHashs.includes(commitHash)) {
-                return {commitHash, type: CommitType.READMEChangedCommitType};
-              }
+      readmeFilesPatterns.push({
+        readmePosixRelativePath: pathToPosixPath(
+          Path.relative(workspacePath, readmePath),
+        ),
+        filesPatterns: getFilesPatternsOfREADME(readmeContent),
+      });
+    }
 
-              if (commitHashsByCurrentUser.includes(commitHash)) {
-                return {commitHash, type: CommitType.FilesChangedCommitType};
-              }
+    let commitHashs = _.compact(
+      (await simpleGitObject.raw('log', '--pretty=format:%H')).split('\n'),
+    );
 
-              return undefined;
-            }),
+    let fromInitialCommit = commitHashs.length <= 100;
+
+    commitHashs = commitHashs.slice(0, 100);
+
+    for (let i = 0; i < commitHashs.length; ++i) {
+      let commitHash = commitHashs[i];
+
+      let user = await getUserByCommit(simpleGitObject, commitHash);
+
+      let commitFiles = await getCommitFiles(
+        simpleGitObject,
+        commitHash,
+        fromInitialCommit && i === commitHashs.length - 1,
+      );
+
+      for (let commitFile of commitFiles) {
+        for (let readmeFilesPattern of readmeFilesPatterns) {
+          let posixRelativePath = Path.posix.relative(
+            Path.posix.dirname(
+              Path.posix.join(
+                workspacePosixPath,
+                readmeFilesPattern.readmePosixRelativePath,
+              ),
+            ),
+            Path.posix.join(workspacePosixPath, commitFile),
           );
 
-          await findREADMENotRead(commitHashsWithType);
-        }
+          for (let filesPattern of readmeFilesPattern.filesPatterns) {
+            if (minimatch(posixRelativePath, filesPattern)) {
+              let latestCommitRead = cache.users
+                ?.find(
+                  userToMatch =>
+                    user.name === userToMatch.name &&
+                    user.email === userToMatch.email,
+                )
+                ?.files?.find(
+                  file =>
+                    file.path === readmeFilesPattern.readmePosixRelativePath,
+                )?.commit;
 
-        async function findREADMENotRead(
-          commitHashsWithType: {commitHash: string; type: CommitType}[],
-          fromInitialCommit: boolean = false,
-        ): Promise<void> {
-          let filesPatterns: string[] = [];
-          let left = 0;
-          let leftCommitType = CommitType.READMEChangedCommitType;
+              // 找到该用户最后提交的README的commit，然后和latestCommitRead比较，得到用户读过的最新的commit。
+              // 如果最新的commit在当前commit之后，那就不报错。
+              // 如果最新的commit在当前commit之前，报错。
 
-          for (let i = 0; i < commitHashsWithType.length; ++i) {
-            if (
-              commitHashsWithType[i].type === CommitType.READMEChangedCommitType
-            ) {
-              if (
-                i > left &&
-                leftCommitType === CommitType.FilesChangedCommitType
-              ) {
-                let commitFiles = _.compact(
-                  (
-                    await simpleGitObject.raw(
-                      'diff',
-                      '--name-only',
-                      left === 0 && fromInitialCommit
-                        ? MAGIC_GIT_INITIAL_COMMIT
-                        : commitHashsWithType[left].commitHash + '^',
-                      commitHashsWithType[i - 1].commitHash,
-                    )
-                  ).split('\n'),
+              let count1 = 1;
+
+              if (latestCommitRead) {
+                count1 = Number(
+                  await simpleGitObject.raw(
+                    'rev-list',
+                    `${latestCommitRead}..${commitHash}`,
+                    '--count',
+                  ),
                 );
-
-                for (let commitFile of commitFiles) {
-                  for (let filesPattern of filesPatterns) {
-                    let commitFileRelativePath = pathToPosixPath(
-                      Path.relative(
-                        Path.dirname(readmePath),
-                        Path.join(workspacePath, commitFile),
-                      ),
-                    );
-
-                    if (minimatch(commitFileRelativePath, filesPattern)) {
-                      console.error(
-                        `File ${Path.join(
-                          workspacePath,
-                          commitFile,
-                        )} changed but README ${Path.join(
-                          workspacePath,
-                          readmePosixRelativePath,
-                        )} not read`,
-                      );
-
-                      break;
-                    }
-                  }
-                }
               }
 
-              leftCommitType = CommitType.READMEChangedCommitType;
-              left = i;
-
-              let commitFiles = _.compact(
+              let readmeCommitByThisUser = _.compact(
                 (
                   await simpleGitObject.raw(
-                    'diff',
-                    '--name-only',
-                    i === 0 && fromInitialCommit
-                      ? MAGIC_GIT_INITIAL_COMMIT
-                      : commitHashsWithType[i].commitHash + '^',
-                    commitHashsWithType[i].commitHash,
+                    'log',
+                    `--author=${user.name}`,
+                    '--pretty=format:%H',
+                    readmeFilesPattern.readmePosixRelativePath,
                   )
                 ).split('\n'),
               );
 
-              if (commitFiles.includes(readmePosixRelativePath)) {
-                let readmeContent = await simpleGitObject.show([
-                  `${commitHashsWithType[i].commitHash}:${readmePosixRelativePath}`,
-                ]);
+              let count2 = 1;
 
-                filesPatterns = getFilesPatternsOfREADME(readmeContent);
-              }
-            } else {
-              if (leftCommitType !== CommitType.FilesChangedCommitType) {
-                left = i;
-                leftCommitType = CommitType.FilesChangedCommitType;
-              }
-            }
-          }
-
-          if (
-            left < commitHashsWithType.length &&
-            leftCommitType === CommitType.FilesChangedCommitType
-          ) {
-            let commitFiles = _.compact(
-              (
-                await simpleGitObject.raw(
-                  'diff',
-                  '--name-only',
-                  left === 0 && fromInitialCommit
-                    ? MAGIC_GIT_INITIAL_COMMIT
-                    : commitHashsWithType[left].commitHash + '^',
-                  commitHashsWithType[commitHashsWithType.length - 1]
-                    .commitHash,
-                )
-              ).split('\n'),
-            );
-
-            for (let commitFile of commitFiles) {
-              for (let filesPattern of filesPatterns) {
-                let commitFileRelativePath = pathToPosixPath(
-                  Path.relative(
-                    Path.dirname(readmePath),
-                    Path.join(workspacePath, commitFile),
+              if (readmeCommitByThisUser[0]) {
+                count2 = Number(
+                  await simpleGitObject.raw(
+                    'rev-list',
+                    `${readmeCommitByThisUser[0]}..${commitHash}`,
+                    '--count',
                   ),
                 );
-
-                if (minimatch(commitFileRelativePath, filesPattern)) {
-                  console.error(
-                    `File ${Path.join(
-                      workspacePath,
-                      commitFile,
-                    )} changed but README ${Path.join(
-                      workspacePath,
-                      readmePosixRelativePath,
-                    )} not read`,
-                  );
-
-                  break;
-                }
               }
+
+              if (count1 > 0 && count2 > 0) {
+                reportError(
+                  workspacePosixPath,
+                  commitFile,
+                  readmeFilesPattern.readmePosixRelativePath,
+                );
+              }
+
+              break;
+            }
+          }
+        }
+      }
+
+      for (let commitFile of commitFiles) {
+        let readmeIndex = readmeFilesPatterns.findIndex(
+          readmeFilesPattern =>
+            readmeFilesPattern.readmePosixRelativePath === commitFile,
+        );
+
+        if (readmeIndex !== -1) {
+          if (fromInitialCommit && i === commitHashs.length - 1) {
+            readmeFilesPatterns.splice(readmeIndex, 1);
+          } else {
+            try {
+              let readmeContent = await simpleGitObject.show([
+                `${commitHash + '^'}:${
+                  readmeFilesPatterns[readmeIndex].readmePosixRelativePath
+                }`,
+              ]);
+
+              readmeFilesPatterns[readmeIndex].filesPatterns =
+                getFilesPatternsOfREADME(readmeContent);
+            } catch (e) {
+              readmeFilesPatterns.splice(readmeIndex, 1);
             }
           }
         }
@@ -498,42 +320,52 @@ async function writeToCacheFile(
   );
 }
 
-async function doesCommitExist(
+async function getUserByCommit(simpleGitObject: SimpleGit, commitHash: string) {
+  let usersRegExp = /(?:([^]+?)\s(<\S+\@\S+>))/;
+
+  let userString = await simpleGitObject.raw(
+    '--no-pager',
+    'show',
+    '-s',
+    '--format=%an <%ae>',
+    commitHash,
+  );
+
+  let userInfo = userString.match(usersRegExp);
+
+  let username = userInfo![1];
+  let email = userInfo![2].match(/<([^]+)>/)![1];
+
+  return {name: username, email};
+}
+
+async function getCommitFiles(
   simpleGitObject: SimpleGit,
-  commitHashToJudge: string,
-  relativePath: string,
-): Promise<boolean> {
-  return (
-    (await simpleGitObject.raw('log', '--pretty=format:%H', relativePath))
-      .split('\n')
-      .findIndex(commitHash => commitHash === commitHashToJudge) !== -1
+  commitHash: string,
+  initialCommit: boolean,
+) {
+  return _.compact(
+    (
+      await simpleGitObject.raw(
+        'diff',
+        '--name-only',
+        initialCommit ? MAGIC_GIT_INITIAL_COMMIT : commitHash + '^',
+        commitHash,
+      )
+    ).split('\n'),
   );
 }
 
-async function committedByThisUser(
-  simpleGitObject: SimpleGit,
-  commitHash: string,
-  user: {name: string; email: string},
-): Promise<boolean> {
-  let [username, email] = (
-    await simpleGitObject.raw('log', '--format=%an %ae', commitHash)
-  )
-    .trim()
-    .split('\n')
-    .slice(0, 1)[0]
-    .split(' ');
-
-  return username === user.name && email === user.email;
-}
-
-async function getFilesPatternsOfREADMEByCommit(
-  simpleGitObject: SimpleGit,
-  commitHash: string,
-  relativePath: string,
-): Promise<string[]> {
-  let readmeContent = await simpleGitObject.show([
-    `${commitHash}:${relativePath}`,
-  ]);
-
-  return getFilesPatternsOfREADME(readmeContent);
+function reportError(
+  workspacePosixPath: string,
+  commitFile: string,
+  readmePosixRelativePath: string,
+): void {
+  console.error(
+    `File ${posixPathToPath(
+      Path.posix.join(workspacePosixPath, commitFile),
+    )} changed but README ${posixPathToPath(
+      Path.posix.join(workspacePosixPath, readmePosixRelativePath),
+    )} not read`,
+  );
 }

@@ -1,0 +1,14 @@
+{
+  "references": [
+    {
+      "path": "packages/rtf-readme/src/library"
+    },
+    {
+      "path": "packages/rtf-readme/src/cli"
+    },
+    {
+      "path": "packages/vscode-rtf-readme/src/extension"
+    }
+  ],
+  "files": []
+}

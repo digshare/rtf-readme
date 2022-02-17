@@ -1,0 +1,10 @@
+{
+  "name": "vscode-rtf-readme",
+  "version": "0.0.0",
+  "license": "MIT",
+  "author": "Chengdu Mufan Technology Co., Ltd.",
+  "dependencies": {
+    "rtf-readme": "*",
+    "tslib": "^2.3.1"
+  }
+}

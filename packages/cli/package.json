@@ -1,11 +1,12 @@
 {
-  "name": "please-readme-cli",
+  "name": "rtf-readme",
   "publisher": "mufan",
   "description": "",
   "version": "0.1.0",
   "license": "MIT",
   "bin": {
-    "readme-cli": "out/program/readme-cli.js"
+    "rtfr": "out/program/main.js",
+    "rtf-readme": "out/program/main.js"
   },
   "dependencies": {
     "clime": "^0.5.14",
@@ -14,7 +15,5 @@
     "please-readme.lib": "*",
     "simple-git": "^3.1.1"
   },
-  "scripts": {
-    "debug": "tsc -p ./tsconfig.json && node out/program/readme-cli.js E:\\MyFiles\\Projects\\working\\makeflow-web"
-  }
+  "scripts": {}
 }

@@ -67,7 +67,12 @@ export default class extends Command {
       }
 
       let logResult = await simpleGitObject.log({file: readmeFilePath});
-      let commit = logResult.latest === null ? '' : logResult.latest.hash;
+
+      if (logResult.latest === null) {
+        return;
+      }
+
+      let commit = logResult.latest.hash;
 
       if (Array.isArray(cache.users)) {
         let user = _.find(cache.users, {name: username, email});
@@ -185,10 +190,6 @@ export default class extends Command {
                   file =>
                     file.path === readmeFilesPattern.readmePosixRelativePath,
                 )?.commit;
-
-              // 找到该用户最后提交的README的commit，然后和latestCommitRead比较，得到用户读过的最新的commit。
-              // 如果最新的commit在当前commit之后，那就不报错。
-              // 如果最新的commit在当前commit之前，报错。
 
               let count1 = 1;
 

@@ -6,3 +6,5 @@
 **/.eslintrc.json
 **/*.map
 **/*.ts
+tsconfig.tsbuildinfo
+packages/cli/**

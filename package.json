@@ -1,7 +1,7 @@
 {
   "name": "rtf-readme",
-  "publisher": "Mufan",
-  "displayName": "PleaseREADME",
+  "publisher": "mufan",
+  "displayName": "rtf-README",
   "description": "README hint for users who need to read the README",
   "version": "0.1.0",
   "private": true,

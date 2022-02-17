@@ -6,10 +6,11 @@ import {TextEncoder} from 'util';
 import * as vscode from 'vscode';
 
 import {
-  CONFIG_FILENAME,
+  CACHE_FILENAME,
   README_FILE_NAMES,
   READMEInfo,
   UserInfo,
+  getFilesPatternsOfREADME,
   pathToPosixPath,
   posixPathToPath,
   getSimpleGitObject,
@@ -146,35 +147,18 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
   );
 
   if (workspaceFolders) {
-    let filesPatterns = [];
-
     let readmeContent = (
       await vscode.workspace.fs.readFile(
         vscode.Uri.from({scheme: 'file', path: absolutePath}),
       )
     ).toString();
-
-    let readmeParts = readmeContent.split(/<!--/g);
-
-    for (let i = 1; i < readmeParts.length; ++i) {
-      let parts = readmeParts[i].split(/-->/g);
-
-      if (parts.length <= 1) {
-        continue;
-      }
-
-      let matchResult = parts[0].match(/\s*readme\s*\:\s*(.+\S)\s*/);
-
-      if (matchResult && matchResult.length >= 2) {
-        filesPatterns.push(matchResult[1].split(Path.sep).join(Path.posix.sep));
-      }
-    }
+    let filesPatterns = getFilesPatternsOfREADME(readmeContent);
 
     for (let workspaceFolder of workspaceFolders) {
       let workspacePath = workspaceFolder.uri.path;
       let relativePath = Path.posix.relative(workspacePath, absolutePath);
 
-      let commit: string = '';
+      let commit: string | undefined = undefined;
 
       let simpleGitObject = workspacePathToGitDict[workspacePath];
 
@@ -183,17 +167,11 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
       }
 
       try {
-        let diffResult = await simpleGitObject.diff([relativePath]);
+        let logResult = await simpleGitObject.log({
+          file: posixPathToPath(absolutePath),
+        });
 
-        if (diffResult) {
-          commit = '';
-        } else {
-          let logResult = await simpleGitObject.log({
-            file: posixPathToPath(absolutePath),
-          });
-
-          commit = logResult.latest === null ? '' : logResult.latest.hash;
-        }
+        commit = logResult.latest === null ? undefined : logResult.latest.hash;
       } catch (e) {
         if (
           !(e as any)
@@ -204,6 +182,10 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
         ) {
           console.error('get log failed.\n', e);
         }
+      }
+
+      if (commit === undefined) {
+        continue;
       }
 
       if (!pleaseREADMEConfigs[workspacePath]) {
@@ -282,7 +264,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
 
       let readme = _.find(config.files, {path: relativePath});
 
-      if (!readme) {
+      if (!readme || !readme.commit) {
         continue;
       }
 
@@ -296,12 +278,6 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
         };
 
         config.users.push(user);
-      }
-
-      if (readme.commit === '') {
-        await writeToCacheFile(workspacePath);
-
-        continue;
       }
 
       let file = _.find(user.files, {path: relativePath});
@@ -345,7 +321,7 @@ function deleteREADMEFile(absolutePath: string) {
 }
 
 async function loadCacheFile(workspacePath: string) {
-  let cacheFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
+  let cacheFilePath = Path.posix.resolve(workspacePath, CACHE_FILENAME);
 
   try {
     let stat = await vscode.workspace.fs.stat(
@@ -428,7 +404,7 @@ async function writeToCacheFile(workspacePath: string) {
   let pleaseREADMEConfigsClone: any = {users: pleaseREADMEConfig.users};
   let uri = vscode.Uri.from({
     scheme: 'file',
-    path: Path.posix.resolve(workspacePath, CONFIG_FILENAME),
+    path: Path.posix.resolve(workspacePath, CACHE_FILENAME),
   });
 
   let stringToWrite = JSON.stringify(pleaseREADMEConfigsClone, undefined, 2);
@@ -483,11 +459,6 @@ async function hintIfNotRead(absolutePath: string) {
     }
 
     for (let readme of config.files) {
-      // if the readme has been modified by this user, do not hint
-      if (readme.commit === '') {
-        continue;
-      }
-
       // if the readme has been read, do not hint
       let file = _.find(user.files, {path: readme.path, commit: readme.commit});
 
@@ -601,7 +572,7 @@ async function handleSpecialFilesAndConditionalHint(
   let filePath = uri.path;
   let fileName = Path.posix.basename(filePath);
 
-  if (fileName === CONFIG_FILENAME) {
+  if (fileName === CACHE_FILENAME) {
     switch (eventType) {
       case vscode.FileChangeType.Changed:
       case vscode.FileChangeType.Created:
@@ -736,10 +707,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  await loadFiles();
-
-  await writeToCacheFiles();
-
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     let workspacePosixPath = workspaceFolder.uri.path;
     let workspacePath = posixPathToPath(workspacePosixPath);
@@ -753,6 +720,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
     workspacePathToGitDict[workspacePosixPath] = simpleGitObject;
   }
+
+  await loadFiles();
+
+  await writeToCacheFiles();
 
   for (let document of vscode.workspace.textDocuments) {
     let absolutePath = pathToPosixPath(document.fileName);

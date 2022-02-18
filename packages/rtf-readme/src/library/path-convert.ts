@@ -18,7 +18,7 @@ export function pathToPosixPath(path: string): string {
   let posixPath = path.split(Path.sep).join(Path.posix.sep);
 
   if (!posixPath.startsWith('/') && isAbsolutePath) {
-    posixPath = '/' + posixPath;
+    posixPath = `/${posixPath}`;
   }
 
   return posixPath;

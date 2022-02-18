@@ -33,6 +33,6 @@ export function getFilesPatternsOfREADME(content: string): string[] {
   filesPatterns = _.uniq(filesPatterns);
 
   return filesPatterns.map(filesPattern =>
-    filesPattern.replaceAll('\\\\', '/').replaceAll('\\', '/'),
+    filesPattern.replace(/\\\\/g, '/').replace(/\\/g, '/'),
   );
 }

@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as FS from 'fs';
 import * as Path from 'path';
 
@@ -155,6 +156,11 @@ export default class extends Command {
 
     commitHashs = commitHashs.slice(0, 100);
 
+    let md5ToReportedFilesMap: Map<
+      string,
+      _.Dictionary<string | _.Dictionary<string>>[]
+    > = new Map();
+
     for (let i = 0; i < commitHashs.length; ++i) {
       let commitHash = commitHashs[i];
 
@@ -176,6 +182,25 @@ export default class extends Command {
           );
 
           for (let filesPattern of readmeFilesPattern.filesPatterns) {
+            let readmePosixRelativePath =
+              readmeFilesPattern.readmePosixRelativePath;
+            let md5String = getMD5OfCertainFileInGitAndREADME(
+              user,
+              commitFile,
+              readmePosixRelativePath,
+            );
+            let result = md5ToReportedFilesMap.get(md5String);
+
+            if (
+              _.find(result, {
+                user,
+                commitFile,
+                readmePath: readmePosixRelativePath,
+              })
+            ) {
+              continue;
+            }
+
             if (
               minimatch(
                 Path.posix.join(workspacePosixPath, commitFile),
@@ -189,8 +214,7 @@ export default class extends Command {
                     user.email === userToMatch.email,
                 )
                 ?.files?.find(
-                  file =>
-                    file.path === readmeFilesPattern.readmePosixRelativePath,
+                  file => file.path === readmePosixRelativePath,
                 )?.commit;
 
               let count1 = 1;
@@ -211,7 +235,7 @@ export default class extends Command {
                     'log',
                     `--author=${user.name}`,
                     '--pretty=format:%H',
-                    readmeFilesPattern.readmePosixRelativePath,
+                    readmePosixRelativePath,
                   )
                 ).split('\n'),
               );
@@ -230,10 +254,27 @@ export default class extends Command {
 
               if (count1 > 0 && count2 > 0) {
                 reportError(
+                  user,
                   workspacePosixPath,
                   commitFile,
-                  readmeFilesPattern.readmePosixRelativePath,
+                  readmePosixRelativePath,
                 );
+
+                if (result) {
+                  result.push({
+                    user,
+                    commitFile,
+                    readmePath: readmePosixRelativePath,
+                  });
+                } else {
+                  md5ToReportedFilesMap.set(md5String, [
+                    {
+                      user,
+                      commitFile,
+                      readmePath: readmePosixRelativePath,
+                    },
+                  ]);
+                }
               }
 
               break;
@@ -363,15 +404,33 @@ async function getCommitFiles(
 }
 
 function reportError(
+  user: {name: string; email: string},
   workspacePosixPath: string,
   commitFile: string,
   readmePosixRelativePath: string,
 ): void {
   console.error(
-    `File ${posixPathToPath(
+    `User: ${JSON.stringify(user)}: File "${posixPathToPath(
       Path.posix.join(workspacePosixPath, commitFile),
-    )} changed but README ${posixPathToPath(
+    )}" changed but README "${posixPathToPath(
       Path.posix.join(workspacePosixPath, readmePosixRelativePath),
-    )} not read`,
+    )}" not read`,
   );
+}
+
+function getMD5OfCertainFileInGitAndREADME(
+  user: {name: string; email: string},
+  commitFile: string,
+  readmePosixRelativePath: string,
+): string {
+  return md5(
+    md5(user.name) +
+      md5(user.email) +
+      md5(commitFile) +
+      md5(readmePosixRelativePath),
+  );
+}
+
+function md5(content: string): string {
+  return crypto.createHash('md5').update(content).digest('hex');
 }

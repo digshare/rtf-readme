@@ -2,13 +2,16 @@
 
 This project contains two parts: vscode extension named "rtf-README" and cli named "rtfr".
 
+This project is used to hint users to read README files when they read or change the files that the README has some information for.
+
+To test this project, create a project. Add a README.md and "README pattern"(the format is shown below) into the README.md. Then commit the README file by user 'A'. Then, use user 'B' which is different from user 'A'.
+
+- To test exetions, open the file in vscode that is contained in "README pattern" added in the README.md previously. Check whether the extension hints you.
+- To test CLI, you use the command to check whether the CLI would report errors about the README.md and the files contained in "README pattern".
+
 ## Features
 
-### 1. Vscode extension.
-
-This extension is used to help users find files changed while the README concerning this file is not read.
-
-#### README pattern：
+#### README pattern format:
 
 [1] `<!-- README packages/**/*.ts -->`
 
@@ -20,6 +23,10 @@ This extension is used to help users find files changed while the README concern
        packages/**/*.tsx
   -->
 ```
+
+### 1. Vscode extension.
+
+This extension is used to help users find the situation that files are changed but the README concerning this file is not read.
 
 ### 2. CLI
 

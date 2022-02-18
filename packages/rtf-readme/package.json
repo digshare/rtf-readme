@@ -1,11 +1,23 @@
 {
   "name": "rtf-readme",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "main": "bld/library/index.js",
+  "bin": {
+    "rtfr": "bld/cli/main.js",
+    "rtf-readme": "bld/cli/main.js"
+  },
   "types": "bld/library/index.d.ts",
   "dependencies": {
+    "clime": "^0.5.14",
+    "is-glob": "^4.0.3",
+    "lodash": "^4.17.21",
+    "minimatch": "^5.0.0",
+    "simple-git": "^3.2.4",
     "tslib": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/is-glob": "^4.0.2"
   }
 }

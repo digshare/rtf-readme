@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/packages/vscode-rtf-readme/bld/**/*.js"],
+      "preLaunchTask": "${defaultBuildTask}"
+    },
+    {
+      "name": "Extension Tests",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "${workspaceFolder}/packages/vscode-rtf-readme/test/workspace",
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionTestsPath=${workspaceFolder}/packages/vscode-rtf-readme/bld/extension/test/suite/index"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/packages/vscode-rtf-readme/bld/extension/test/**/*.js"
+      ],
+      "preLaunchTask": "${defaultBuildTask}"
+    }
+  ]
+}

@@ -1,13 +1,44 @@
 {
-  "name": "rtf-readme-packages",
+  "name": "rtf-readme",
+  "publisher": "mufan",
+  "version": "0.1.0",
+  "displayName": "rtf-README",
+  "description": "README hint for users who need to read the README",
+  "engines": {
+    "vscode": "^1.63.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "README"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/makeflow/rtf-readme"
+  },
+  "main": "./packages/vscode-rtf-readme/bld/extension/extension.js",
+  "files": [
+    "./packages/vscode-rtf-readme/bld/extension",
+    "./packages/rtf-readme/bld/library"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:readme"
+  ],
+  "contributes": {},
   "private": true,
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "scripts": {
+    "vscode:prepublish": "yarn run compile",
+    "compile": "tsc --build ./tsconfig.json",
+    "watch": "tsc --build ./tsconfig.json -watch",
     "build": "rimraf packages/*/bld && tsc --build",
     "lint": "eslint .",
     "lint-prettier": "prettier --check .",
-    "test": "yarn lint-prettier && yarn build && yarn lint"
+    "pretest": "yarn run compile && yarn run lint",
+    "test": "node ./packages/vscode-rtf-readme/bld/extension/test/runTest.js"
   },
   "workspaces": [
     "packages/rtf-readme",
@@ -16,6 +47,9 @@
   "devDependencies": {
     "@mufan/code": "^0.2.10",
     "@mufan/eslint-plugin": "^0.1.48",
+    "@types/lodash": "^4.14.178",
+    "@types/minimatch": "^3.0.5",
+    "@types/node": "^17.0.18",
     "eslint": "^8.9.0",
     "prettier": "^2.5.1",
     "rimraf": "^3.0.2",

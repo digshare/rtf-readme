@@ -1,10 +1,24 @@
 {
   "name": "vscode-rtf-readme",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "dependencies": {
+    "@vscode/test-electron": "^2.1.2",
+    "chokidar": "^3.5.3",
+    "lodash": "^4.17.21",
+    "minimatch": "^5.0.0",
+    "mkdirp": "^1.0.4",
+    "mocha": "^9.2.0",
+    "rimraf": "^3.0.2",
     "rtf-readme": "*",
+    "simple-git": "^3.2.4",
     "tslib": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/mkdirp": "^1.0.2",
+    "@types/mocha": "^9.1.0",
+    "@types/rimraf": "^3.0.2",
+    "@types/vscode": "^1.64.0"
   }
 }

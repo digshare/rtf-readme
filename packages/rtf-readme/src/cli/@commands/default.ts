@@ -161,6 +161,8 @@ export default class extends Command {
       _.Dictionary<string | _.Dictionary<string>>[]
     > = new Map();
 
+    let hasReported = false;
+
     for (let i = 0; i < commitHashs.length; ++i) {
       let commitHash = commitHashs[i];
 
@@ -253,6 +255,8 @@ export default class extends Command {
               }
 
               if (count1 > 0 && count2 > 0) {
+                hasReported = true;
+
                 reportError(
                   user,
                   workspacePosixPath,
@@ -308,6 +312,10 @@ export default class extends Command {
           }
         }
       }
+    }
+
+    if (hasReported) {
+      throw new Error("There's some READMEs not read");
     }
   }
 }

@@ -17,7 +17,7 @@
     "type": "git",
     "url": "https://github.com/makeflow/rtf-readme"
   },
-  "main": "./packages/vscode-rtf-readme/bld/extension/extension.js",
+  "main": "./dist/extension.js",
   "files": [
     "./packages/vscode-rtf-readme/bld/extension",
     "./packages/rtf-readme/bld/library"
@@ -28,10 +28,10 @@
   ],
   "contributes": {},
   "private": true,
-  "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "scripts": {
-    "vscode:prepublish": "yarn run compile",
+    "vscode:prepublish": "yarn esbuild-base -- --minify",
+    "esbuild-base": "esbuild ./packages/vscode-rtf-readme/src/extension/extension.ts --bundle --outfile=./dist/extension.js --external:vscode --format=cjs --platform=node",
     "compile": "tsc --build ./tsconfig.json",
     "watch": "tsc --build ./tsconfig.json -watch",
     "build": "rimraf packages/*/bld && tsc --build",
@@ -50,6 +50,7 @@
     "@types/lodash": "^4.14.178",
     "@types/minimatch": "^3.0.5",
     "@types/node": "^17.0.18",
+    "esbuild": "^0.14.23",
     "eslint": "^8.9.0",
     "prettier": "^2.5.1",
     "rimraf": "^3.0.2",

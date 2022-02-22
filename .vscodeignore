@@ -1,0 +1,16 @@
+.vscode/**
+.vscode-test/**
+.github/**
+.magicspace/**
+node_modules
+.gitignore
+.prettierrc
+.prettierignore
+.yarnrc
+**/tsconfig.json
+**/.eslintrc.js
+**/.eslintrc.json
+**/*.map
+**/*.ts
+tsconfig.tsbuildinfo
+packages/**

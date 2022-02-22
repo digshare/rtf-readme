@@ -231,10 +231,11 @@ export default class extends Command {
                 );
               }
 
-              let readmeCommitByThisUser = _.compact(
+              let readmeCommitsByThisUser = _.compact(
                 (
                   await simpleGitObject.raw(
                     'log',
+                    '-1',
                     `--author=${user.name}`,
                     '--pretty=format:%H',
                     readmePosixRelativePath,
@@ -244,11 +245,22 @@ export default class extends Command {
 
               let count2 = 1;
 
-              if (readmeCommitByThisUser[0]) {
+              if (readmeCommitsByThisUser[0]) {
+                let readmeCommits = _.compact(
+                  (
+                    await simpleGitObject.raw(
+                      'log',
+                      '-1',
+                      '--pretty=format:%H',
+                      readmePosixRelativePath,
+                    )
+                  ).split('\n'),
+                );
+
                 count2 = Number(
                   await simpleGitObject.raw(
                     'rev-list',
-                    `${readmeCommitByThisUser[0]}..${commitHash}`,
+                    `${readmeCommitsByThisUser[0]}..${readmeCommits[0]}`,
                     '--count',
                   ),
                 );

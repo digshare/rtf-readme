@@ -219,18 +219,6 @@ export default class extends Command {
                   file => file.path === readmePosixRelativePath,
                 )?.commit;
 
-              let count1 = 1;
-
-              if (latestCommitRead) {
-                count1 = Number(
-                  await simpleGitObject.raw(
-                    'rev-list',
-                    `${latestCommitRead}..${commitHash}`,
-                    '--count',
-                  ),
-                );
-              }
-
               let readmeCommitsByThisUser = _.compact(
                 (
                   await simpleGitObject.raw(
@@ -243,24 +231,39 @@ export default class extends Command {
                 ).split('\n'),
               );
 
+              let readmeCommits =
+                latestCommitRead || readmeCommitsByThisUser[0]
+                  ? _.compact(
+                      (
+                        await simpleGitObject.raw(
+                          'log',
+                          '-1',
+                          '--pretty=format:%H',
+                          readmePosixRelativePath,
+                        )
+                      ).split('\n'),
+                    )
+                  : undefined;
+
+              let count1 = 1;
+
+              if (latestCommitRead) {
+                count1 = Number(
+                  await simpleGitObject.raw(
+                    'rev-list',
+                    `${latestCommitRead}..${readmeCommits![0]}`,
+                    '--count',
+                  ),
+                );
+              }
+
               let count2 = 1;
 
               if (readmeCommitsByThisUser[0]) {
-                let readmeCommits = _.compact(
-                  (
-                    await simpleGitObject.raw(
-                      'log',
-                      '-1',
-                      '--pretty=format:%H',
-                      readmePosixRelativePath,
-                    )
-                  ).split('\n'),
-                );
-
                 count2 = Number(
                   await simpleGitObject.raw(
                     'rev-list',
-                    `${readmeCommitsByThisUser[0]}..${readmeCommits[0]}`,
+                    `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
                     '--count',
                   ),
                 );

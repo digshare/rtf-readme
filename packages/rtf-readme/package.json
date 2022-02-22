@@ -1,14 +1,24 @@
 {
   "name": "rtf-readme",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "README"
+  ],
+  "repository": "https://github.com/digshare/rtf-readme.git",
   "main": "bld/library/index.js",
   "bin": {
     "rtfr": "bld/cli/main.js",
     "rtf-readme": "bld/cli/main.js"
   },
   "types": "bld/library/index.d.ts",
+  "files": [
+    "bld"
+  ],
   "dependencies": {
     "clime": "^0.5.14",
     "is-glob": "^4.0.3",

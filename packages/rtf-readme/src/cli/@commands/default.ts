@@ -224,7 +224,7 @@ export default class extends Command {
                   await simpleGitObject.raw(
                     'log',
                     '-1',
-                    `--author=${user.name}`,
+                    `--author="${user.name} <${user.email}>"`,
                     '--pretty=format:%H',
                     readmePosixRelativePath,
                   )

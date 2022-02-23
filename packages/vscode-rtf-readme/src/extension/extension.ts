@@ -122,6 +122,12 @@ async function readCacheFile(uri: vscode.Uri): Promise<void> {
   }
 }
 
+async function createCacheFile(uri: vscode.Uri): Promise<void> {
+  await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode('{}'));
+
+  await readCacheFile(uri);
+}
+
 function deleteCacheFile(uri: vscode.Uri): void {
   let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 
@@ -323,22 +329,18 @@ function deleteREADMEFile(absolutePath: string): void {
 
 async function loadCacheFile(workspacePath: string): Promise<void> {
   let cacheFilePath = Path.posix.resolve(workspacePath, CACHE_FILENAME);
+  let uri = vscode.Uri.from({scheme: 'file', path: cacheFilePath});
 
   try {
-    let stat = await vscode.workspace.fs.stat(
-      vscode.Uri.from({scheme: 'file', path: cacheFilePath}),
-    );
+    let stat = await vscode.workspace.fs.stat(uri);
 
     if (stat.type === vscode.FileType.File) {
-      await readCacheFile(
-        vscode.Uri.from({scheme: 'file', path: cacheFilePath}),
-      );
+      await readCacheFile(uri);
     }
   } catch (e) {
-    console.error(
-      `load config file of workspace ${workspacePath} failed.\n`,
-      e,
-    );
+    console.warn(`load config file of workspace ${workspacePath} failed.\n`, e);
+
+    await createCacheFile(uri);
   }
 }
 
@@ -460,6 +462,28 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
     }
 
     for (let readme of config.files) {
+      if (readme.filesPatterns.length === 0) {
+        continue;
+      }
+
+      let matched: boolean = false;
+      let readmeAbsolutePath = Path.posix.join(workspacePath, readme.path);
+      let readmeDirPath = Path.posix.dirname(readmeAbsolutePath);
+
+      for (let filesPattern of readme.filesPatterns) {
+        if (
+          minimatch(absolutePath, Path.posix.join(readmeDirPath, filesPattern))
+        ) {
+          matched = true;
+
+          break;
+        }
+      }
+
+      if (!matched) {
+        continue;
+      }
+
       // if the readme has been read, do not hint
       let file = _.find(user.files, {path: readme.path, commit: readme.commit});
 
@@ -470,43 +494,37 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       file = _.find(user.files, {path: readme.path});
 
       try {
-        let logResult = await simpleGitObject.log({file: readme.path});
+        let readmeCommitsByThisUser = _.compact(
+          (
+            await simpleGitObject.raw(
+              'log',
+              '-1',
+              `--author="${user.name} <${user.email}>"`,
+              '--pretty=format:%H',
+              readme.path,
+            )
+          ).split('\n'),
+        );
 
-        if (file) {
-          for (let commitInfo of logResult.all) {
-            if (
-              username === commitInfo.author_name &&
-              email === commitInfo.author_email
-            ) {
-              let count = await simpleGitObject.raw(
-                'rev-list',
-                `${file.commit}..${commitInfo.hash}`,
-                '--count',
-              );
+        if (readmeCommitsByThisUser.length > 0) {
+          if (file) {
+            let count = await simpleGitObject.raw(
+              'rev-list',
+              `${file.commit}..${readmeCommitsByThisUser[0]}`,
+              '--count',
+            );
 
-              if (Number(count) > 0) {
-                file.commit = commitInfo.hash;
-
-                await writeToCacheFile(workspacePath);
-              }
-
-              break;
-            }
-          }
-        } else {
-          for (let commitInfo of logResult.all) {
-            if (
-              username === commitInfo.author_name &&
-              email === commitInfo.author_email
-            ) {
-              file = {path: readme.path, commit: commitInfo.hash};
-
-              user.files.push(file);
+            if (Number(count) > 0) {
+              file.commit = readmeCommitsByThisUser[0];
 
               await writeToCacheFile(workspacePath);
-
-              break;
             }
+          } else {
+            file = {path: readme.path, commit: readmeCommitsByThisUser[0]};
+
+            user.files.push(file);
+
+            await writeToCacheFile(workspacePath);
           }
         }
       } catch (e) {
@@ -520,44 +538,35 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      let readmeAbsolutePath = Path.posix.join(workspacePath, readme.path);
-      let readmeDirPath = Path.posix.dirname(readmeAbsolutePath);
+      await writeToCacheFile(workspacePath);
 
-      for (let filesPattern of readme.filesPatterns) {
-        if (
-          minimatch(absolutePath, Path.posix.join(readmeDirPath, filesPattern))
-        ) {
-          await writeToCacheFile(workspacePath);
+      let result = await vscode.window.showInformationMessage(
+        `Please read the README of file ${absolutePath}.`,
+        'OK',
+        'Read Later',
+      );
 
-          let result = await vscode.window.showInformationMessage(
-            `Please read the README of file ${absolutePath}.`,
-            'OK',
-            'Read Later',
-          );
+      if (result === 'OK') {
+        let commit = _.find(user.files, {path: readme.path})?.commit;
 
-          if (result === 'OK') {
-            let commit = _.find(user.files, {path: readme.path})?.commit;
-
-            if (!commit) {
-              await vscode.window
-                .showTextDocument(
-                  vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
-                )
-                .then(() => {}, console.error);
-            } else {
-              await vscode.commands.executeCommand(
-                'vscode.diff',
-                vscode.Uri.from({
-                  scheme: 'readme',
-                  path: readmeAbsolutePath,
-                  query: JSON.stringify({commit}),
-                }),
-                vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
-              );
-            }
-          }
-
-          break;
+        if (!commit) {
+          await vscode.window
+            .showTextDocument(
+              vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
+            )
+            .then(() => {}, console.error);
+        } else {
+          await vscode.commands
+            .executeCommand(
+              'vscode.diff',
+              vscode.Uri.from({
+                scheme: 'readme',
+                path: readmeAbsolutePath,
+                query: JSON.stringify({commit}),
+              }),
+              vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
+            )
+            .then(() => {}, console.error);
         }
       }
     }

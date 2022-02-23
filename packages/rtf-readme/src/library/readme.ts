@@ -1,4 +1,4 @@
-import isGlob from 'is-glob';
+import isValidGlob from 'is-valid-glob';
 import * as _ from 'lodash';
 
 export function getFilesPatternsOfREADME(content: string): string[] {
@@ -22,7 +22,7 @@ export function getFilesPatternsOfREADME(content: string): string[] {
         break;
       }
 
-      if (isGlob(patternResult[0])) {
+      if (isValidGlob(patternResult[0])) {
         filesPatterns.push(patternResult[0]);
       } else {
         break;
@@ -30,9 +30,11 @@ export function getFilesPatternsOfREADME(content: string): string[] {
     }
   }
 
-  filesPatterns = _.uniq(filesPatterns);
-
-  return filesPatterns.map(filesPattern =>
-    filesPattern.replace(/\\\\/g, '/').replace(/\\/g, '/'),
+  filesPatterns = _.uniq(
+    filesPatterns.map(filesPattern =>
+      filesPattern.replace(/\\\\/g, '/').replace(/\\/g, '/'),
+    ),
   );
+
+  return filesPatterns;
 }

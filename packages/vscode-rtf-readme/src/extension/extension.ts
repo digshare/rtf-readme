@@ -19,6 +19,8 @@ import * as vscode from 'vscode';
 
 import {FileSystemProvider} from './file-system-provider';
 
+let output!: vscode.OutputChannel;
+
 interface PleaseREADMEConfig {
   files: READMEInfo[];
   users: UserInfo[];
@@ -111,13 +113,13 @@ async function readCacheFile(uri: vscode.Uri): Promise<void> {
         await writeToCacheFile(workspacePath);
       }
     } catch (e) {
-      console.error(`The config file ${path} is not valid.\n`, e);
+      output.appendLine(
+        `The config file ${path} is not valid.\n${(e as any).toString()}`,
+      );
     }
   } else {
-    console.error(
-      'This README file',
-      path,
-      'does not belong to any workspace.',
+    output.appendLine(
+      `This README file ${path} does not belong to any workspace.`,
     );
   }
 }
@@ -137,13 +139,15 @@ function deleteCacheFile(uri: vscode.Uri): void {
     try {
       delete pleaseREADMEConfigs[workspaceFolder.uri.path];
     } catch (e) {
-      console.error(`The config file ${path} deletion has not succeeded.\n`, e);
+      output.appendLine(
+        `The config file ${path} deletion has not succeeded.\n${(
+          e as any
+        ).toString()}`,
+      );
     }
   } else {
-    console.error(
-      'This README file',
-      path,
-      'does not belong to any workspace.',
+    output.appendLine(
+      `This README file ${path} does not belong to any workspace.`,
     );
   }
 }
@@ -187,7 +191,7 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
               "Error: fatal: your current branch 'master' does not have any commits yet",
             )
         ) {
-          console.error('get log failed.\n', e);
+          output.appendLine(`get log failed.\n${(e as any).toString()}`);
         }
       }
 
@@ -230,7 +234,7 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
       }
     }
   } else {
-    console.error('no project found for README file:', absolutePath);
+    output.appendLine(`no project found for README file: ${absolutePath}`);
   }
 }
 
@@ -317,13 +321,13 @@ function deleteREADMEFile(absolutePath: string): void {
             readme.path !== Path.posix.relative(workspacePath, absolutePath),
         );
       } else {
-        console.error(
+        output.appendLine(
           'Deleting a README file which is not inspected by PleaseREADME.',
         );
       }
     }
   } else {
-    console.error('No workspace when deleting README file saved in RAM.');
+    output.appendLine('No workspace when deleting README file saved in RAM.');
   }
 }
 
@@ -366,7 +370,7 @@ async function walkThroughFilesToLoadREADME(
 
       fileType = stat.type;
     } catch (e) {
-      console.error('walk through files error.\n', e);
+      output.appendLine(`walk through files error.\n${(e as any).toString()}`);
 
       return;
     }
@@ -528,9 +532,10 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
           }
         }
       } catch (e) {
-        console.error(
-          'Searching for latest README modification by current user failed.\n',
-          e,
+        output.appendLine(
+          `Searching for latest README modification by current user failed.\n${(
+            e as any
+          ).toString()}`,
         );
       }
 
@@ -554,7 +559,10 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
             .showTextDocument(
               vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
             )
-            .then(() => {}, console.error);
+            .then(
+              () => {},
+              err => output.appendLine(err.toString()),
+            );
         } else {
           await vscode.commands
             .executeCommand(
@@ -566,7 +574,10 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
               }),
               vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
             )
-            .then(() => {}, console.error);
+            .then(
+              () => {},
+              err => output.appendLine(err.toString()),
+            );
         }
       }
     }
@@ -595,7 +606,7 @@ async function handleSpecialFilesAndConditionalHint(
         break;
 
       default:
-        console.error('Unexpected event type!');
+        output.appendLine('Unexpected event type!');
 
         break;
     }
@@ -615,7 +626,7 @@ async function handleSpecialFilesAndConditionalHint(
         break;
 
       default:
-        console.error('Unexpected event type!');
+        output.appendLine('Unexpected event type!');
 
         break;
     }
@@ -627,6 +638,8 @@ async function handleSpecialFilesAndConditionalHint(
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
+  output = vscode.window.createOutputChannel('rtf-README');
+
   let fsp = new FileSystemProvider();
 
   context.subscriptions.push(

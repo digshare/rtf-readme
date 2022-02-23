@@ -34,11 +34,11 @@ The CLI program is used to find files changed while the relavant README is not r
 
 #### Usage Example:
 
-[1] `rtfr .`
+[1] `rtfr check`
 
 This is used to find the README which is not read while it needs to be read.
 
-[2] `rtfr . --read dir/README.md`
+[2] `rtfr read dir/README.md`
 
 This means you've read dir/README.md.
 

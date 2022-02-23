@@ -499,7 +499,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
             await simpleGitObject.raw(
               'log',
               '-1',
-              `--author="${user.name} <${user.email}>"`,
+              `--author=${user.name} <${user.email}>`,
               '--pretty=format:%H',
               readme.path,
             )

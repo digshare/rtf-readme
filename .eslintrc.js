@@ -11,8 +11,7 @@ module.exports = {
       files: ['**/*.{ts,tsx}'],
       extends: ['plugin:@mufan/default'],
       parserOptions: {
-        project: './tsconfig.json',
-        tsconfigRootDir: __dirname,
+        project: '**/tsconfig.json',
       },
     },
   ],

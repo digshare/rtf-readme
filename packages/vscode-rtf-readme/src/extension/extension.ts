@@ -387,10 +387,12 @@ async function walkThroughFilesToLoadREADME(
     for (let [filePath, newFileType] of await vscode.workspace.fs.readDirectory(
       vscode.Uri.from({scheme: 'file', path}),
     )) {
-      await walkThroughFilesToLoadREADME(
-        Path.posix.resolve(path, filePath),
-        newFileType,
-      );
+      if (!filePath.endsWith('node_modules') && !filePath.endsWith('.git')) {
+        await walkThroughFilesToLoadREADME(
+          Path.posix.resolve(path, filePath),
+          newFileType,
+        );
+      }
     }
   }
 }

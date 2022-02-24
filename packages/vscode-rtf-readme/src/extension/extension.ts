@@ -23,6 +23,8 @@ let output!: vscode.OutputChannel;
 
 let loadREADMEFilePromises: Promise<void>[] = [];
 
+let writeToCacheFilePromise: Promise<void> = Promise.resolve();
+
 interface PleaseREADMEConfig {
   files: READMEInfo[];
   users: UserInfo[];
@@ -112,7 +114,7 @@ async function readCacheFile(uri: vscode.Uri): Promise<void> {
       }
 
       if (configModified) {
-        await writeToCacheFile(workspacePath);
+        writeToCacheFileWithPromise(workspacePath);
       }
     } catch (e) {
       output.appendLine(
@@ -307,7 +309,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
         file.commit = readme.commit;
       }
 
-      await writeToCacheFile(workspacePath);
+      writeToCacheFileWithPromise(workspacePath);
     }
   }
 }
@@ -436,9 +438,19 @@ async function writeToCacheFile(workspacePath: string): Promise<void> {
   }
 }
 
+function writeToCacheFileWithPromise(workspacePath: string): void {
+  void writeToCacheFilePromise
+    .then(() => writeToCacheFile(workspacePath))
+    .then(
+      () => {},
+      err => err,
+    )
+    .then(err => err && output.appendLine(err.toString()));
+}
+
 async function writeToCacheFiles(): Promise<void> {
   for (const workspacePath of Object.keys(pleaseREADMEConfigs)) {
-    await writeToCacheFile(workspacePath);
+    writeToCacheFileWithPromise(workspacePath);
   }
 }
 
@@ -454,26 +466,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       continue;
     }
 
-    let username = (await simpleGitObject.getConfig('user.name')).value;
-    let email = (await simpleGitObject.getConfig('user.email')).value;
-
-    if (!username || !email) {
-      continue;
-    }
-
-    let user = _.find(config.users, {name: username, email});
-
-    if (!user) {
-      user = {
-        name: username,
-        email,
-        files: [],
-      };
-
-      config.users.push(user);
-
-      await writeToCacheFile(workspacePath);
-    }
+    let username: string | null | undefined, email: string | null | undefined;
 
     for (let readme of config.files) {
       if (readme.filesPatterns.length === 0) {
@@ -496,6 +489,29 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
       if (!matched) {
         continue;
+      }
+
+      if (username === undefined && email === undefined) {
+        username = (await simpleGitObject.raw('config', 'user.name')).trim();
+        email = (await simpleGitObject.raw('config', 'user.email')).trim();
+      }
+
+      if (!username || !email) {
+        break;
+      }
+
+      let user = _.find(config.users, {name: username, email});
+
+      if (!user) {
+        user = {
+          name: username,
+          email,
+          files: [],
+        };
+
+        config.users.push(user);
+
+        writeToCacheFileWithPromise(workspacePath);
       }
 
       // if the readme has been read, do not hint
@@ -531,14 +547,14 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
             if (Number(count) > 0) {
               file.commit = readmeCommitsByThisUser[0];
 
-              await writeToCacheFile(workspacePath);
+              writeToCacheFileWithPromise(workspacePath);
             }
           } else {
             file = {path: readme.path, commit: readmeCommitsByThisUser[0]};
 
             user.files.push(file);
 
-            await writeToCacheFile(workspacePath);
+            writeToCacheFileWithPromise(workspacePath);
           }
         }
       } catch (e) {
@@ -553,7 +569,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      await writeToCacheFile(workspacePath);
+      writeToCacheFileWithPromise(workspacePath);
 
       let result = await vscode.window.showInformationMessage(
         `Please read the README of file ${absolutePath}.`,
@@ -764,6 +780,10 @@ export async function activate(
     let absolutePath = pathToPosixPath(document.fileName);
 
     if (absolutePath === Path.posix.basename(absolutePath)) {
+      continue;
+    }
+
+    if (absolutePath.endsWith('.git')) {
       continue;
     }
 

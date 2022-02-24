@@ -21,6 +21,8 @@ import {FileSystemProvider} from './file-system-provider';
 
 let output!: vscode.OutputChannel;
 
+let loadREADMEFilePromises: Promise<void>[] = [];
+
 interface PleaseREADMEConfig {
   files: READMEInfo[];
   users: UserInfo[];
@@ -178,11 +180,17 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
       }
 
       try {
-        let logResult = await simpleGitObject.log({
-          file: posixPathToPath(absolutePath),
-        });
+        let logResult = _.compact(
+          (
+            await simpleGitObject.raw(
+              'log',
+              '-1',
+              posixPathToPath(absolutePath),
+            )
+          ).split('\n'),
+        );
 
-        commit = logResult.latest === null ? undefined : logResult.latest.hash;
+        commit = logResult[0];
       } catch (e) {
         if (
           !(e as any)
@@ -381,7 +389,7 @@ async function walkThroughFilesToLoadREADME(
     fileType === vscode.FileType.SymbolicLink
   ) {
     if (README_FILE_NAMES.includes(Path.posix.basename(path))) {
-      await loadREADMEFile(path);
+      loadREADMEFilePromises.push(loadREADMEFile(path));
     }
   } else {
     for (let [filePath, newFileType] of await vscode.workspace.fs.readDirectory(
@@ -747,6 +755,8 @@ export async function activate(
   }
 
   await loadFiles();
+
+  await Promise.all(loadREADMEFilePromises);
 
   await writeToCacheFiles();
 

@@ -38,7 +38,10 @@ let workspacePathToWatchDisposableDict: {
   [workspacePath: string]: vscode.Disposable;
 } = {};
 
-async function readCacheFile(uri: vscode.Uri): Promise<void> {
+async function readCacheFile(
+  uri: vscode.Uri,
+  doNotWrite: boolean = false,
+): Promise<void> {
   let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 
   let path = uri.path;
@@ -113,7 +116,7 @@ async function readCacheFile(uri: vscode.Uri): Promise<void> {
         pleaseREADMEConfigs[workspacePath] = {users: config.users, files: []};
       }
 
-      if (configModified) {
+      if (!doNotWrite && configModified) {
         writeToCacheFileWithPromise(workspacePath);
       }
     } catch (e) {
@@ -131,7 +134,7 @@ async function readCacheFile(uri: vscode.Uri): Promise<void> {
 async function createCacheFile(uri: vscode.Uri): Promise<void> {
   await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode('{}'));
 
-  await readCacheFile(uri);
+  await readCacheFile(uri, true);
 }
 
 function deleteCacheFile(uri: vscode.Uri): void {
@@ -187,6 +190,7 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
             await simpleGitObject.raw(
               'log',
               '-1',
+              '--pretty=format:%H',
               posixPathToPath(absolutePath),
             )
           ).split('\n'),
@@ -349,7 +353,7 @@ async function loadCacheFile(workspacePath: string): Promise<void> {
     let stat = await vscode.workspace.fs.stat(uri);
 
     if (stat.type === vscode.FileType.File) {
-      await readCacheFile(uri);
+      await readCacheFile(uri, true);
     }
   } catch (e) {
     console.warn(`load config file of workspace ${workspacePath} failed.\n`, e);
@@ -439,7 +443,7 @@ async function writeToCacheFile(workspacePath: string): Promise<void> {
 }
 
 function writeToCacheFileWithPromise(workspacePath: string): void {
-  void writeToCacheFilePromise
+  writeToCacheFilePromise = writeToCacheFilePromise
     .then(() => writeToCacheFile(workspacePath))
     .then(
       () => {},

@@ -525,7 +525,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      file = _.find(user.files, {path: readme.path});
+      file = _.cloneDeep(_.find(user.files, {path: readme.path}));
 
       try {
         let readmeCommitsByThisUser = _.compact(
@@ -550,15 +550,9 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
             if (Number(count) > 0) {
               file.commit = readmeCommitsByThisUser[0];
-
-              writeToCacheFileWithPromise(workspacePath);
             }
           } else {
             file = {path: readme.path, commit: readmeCommitsByThisUser[0]};
-
-            user.files.push(file);
-
-            writeToCacheFileWithPromise(workspacePath);
           }
         }
       } catch (e) {
@@ -573,15 +567,15 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      writeToCacheFileWithPromise(workspacePath);
-
       let result = await vscode.window.showInformationMessage(
-        `Please read the README of file ${absolutePath}.`,
-        'OK',
+        `Please read the f***ing README "${
+          readme.path
+        }" for file: ${Path.posix.relative(workspacePath, absolutePath)}.`,
+        'Open',
         'Read Later',
       );
 
-      if (result === 'OK') {
+      if (result === 'Open') {
         let commit = _.find(user.files, {path: readme.path})?.commit;
 
         if (!commit) {

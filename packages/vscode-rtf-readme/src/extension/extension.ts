@@ -131,12 +131,6 @@ async function readCacheFile(
   }
 }
 
-async function createCacheFile(uri: vscode.Uri): Promise<void> {
-  await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode('{}'));
-
-  await readCacheFile(uri, true);
-}
-
 function deleteCacheFile(uri: vscode.Uri): void {
   let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 
@@ -332,7 +326,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
         file.commit = readme.commit;
       }
 
-      writeToCacheFileWithPromise(workspacePath);
+      writeToCacheFileWithPromise(workspacePath, true);
     }
   }
 }
@@ -376,8 +370,6 @@ async function loadCacheFile(workspacePath: string): Promise<void> {
     }
   } catch (e) {
     console.warn(`load config file of workspace ${workspacePath} failed.\n`, e);
-
-    await createCacheFile(uri);
   }
 }
 
@@ -438,7 +430,10 @@ async function loadFiles(): Promise<void> {
   }
 }
 
-async function writeToCacheFile(workspacePath: string): Promise<void> {
+async function writeToCacheFile(
+  workspacePath: string,
+  mustWriteFile: boolean,
+): Promise<void> {
   let pleaseREADMEConfig = pleaseREADMEConfigs[workspacePath] || {
     files: [],
     users: [],
@@ -451,19 +446,37 @@ async function writeToCacheFile(workspacePath: string): Promise<void> {
 
   let stringToWrite = JSON.stringify(pleaseREADMEConfigsClone, undefined, 2);
 
-  let cacheFileContent = (await vscode.workspace.fs.readFile(uri)).toString();
+  try {
+    let cacheFileContent = (await vscode.workspace.fs.readFile(uri)).toString();
 
-  if (stringToWrite !== cacheFileContent) {
-    await vscode.workspace.fs.writeFile(
-      uri,
-      new TextEncoder().encode(stringToWrite),
-    );
+    if (stringToWrite !== cacheFileContent) {
+      await vscode.workspace.fs.writeFile(
+        uri,
+        new TextEncoder().encode(stringToWrite),
+      );
+    }
+  } catch (e) {
+    let errorMessage = (e as any).toString();
+
+    if (errorMessage.startsWith('EntryNotFound')) {
+      if (mustWriteFile) {
+        await vscode.workspace.fs.writeFile(
+          uri,
+          new TextEncoder().encode(stringToWrite),
+        );
+      }
+    } else {
+      output.appendLine(`write to cache failed. ${errorMessage}`);
+    }
   }
 }
 
-function writeToCacheFileWithPromise(workspacePath: string): void {
+function writeToCacheFileWithPromise(
+  workspacePath: string,
+  mustWriteFile: boolean = true,
+): void {
   writeToCacheFilePromise = writeToCacheFilePromise
-    .then(() => writeToCacheFile(workspacePath))
+    .then(() => writeToCacheFile(workspacePath, mustWriteFile))
     .then(
       () => {},
       err => err,
@@ -473,7 +486,7 @@ function writeToCacheFileWithPromise(workspacePath: string): void {
 
 async function writeToCacheFiles(): Promise<void> {
   for (const workspacePath of Object.keys(pleaseREADMEConfigs)) {
-    writeToCacheFileWithPromise(workspacePath);
+    writeToCacheFileWithPromise(workspacePath, false);
   }
 }
 
@@ -534,7 +547,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
         config.users.push(user);
 
-        writeToCacheFileWithPromise(workspacePath);
+        writeToCacheFileWithPromise(workspacePath, false);
       }
 
       // if the readme has been read, do not hint

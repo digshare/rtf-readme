@@ -138,7 +138,7 @@ function deleteCacheFile(uri: vscode.Uri): void {
 
   if (workspaceFolder) {
     try {
-      delete pleaseREADMEConfigs[workspaceFolder.uri.path];
+      pleaseREADMEConfigs[workspaceFolder.uri.path].users = [];
     } catch (e) {
       output.appendLine(
         `The config file ${path} deletion has not succeeded.\n${(
@@ -369,7 +369,11 @@ async function loadCacheFile(workspacePath: string): Promise<void> {
       await readCacheFile(uri, true);
     }
   } catch (e) {
-    console.warn(`load config file of workspace ${workspacePath} failed.\n`, e);
+    output.appendLine(
+      `load config file of workspace ${workspacePath} failed.\n${(
+        e as any
+      ).toString()}`,
+    );
   }
 }
 

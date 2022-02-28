@@ -21,7 +21,7 @@ import {FileSystemProvider} from './file-system-provider';
 
 let output!: vscode.OutputChannel;
 
-let loadREADMEFilePromises: Promise<void>[] = [];
+let loadREADMEFilePromises: Promise<boolean>[] = [];
 
 let writeToCacheFilePromise: Promise<void> = Promise.resolve();
 
@@ -159,7 +159,7 @@ function deleteCacheFile(uri: vscode.Uri): void {
   }
 }
 
-async function loadREADMEFile(absolutePath: string): Promise<void> {
+async function loadREADMEFile(absolutePath: string): Promise<boolean> {
   let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
     workspaceFolder => absolutePath.startsWith(workspaceFolder.uri.path),
   );
@@ -171,6 +171,21 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
       )
     ).toString();
     let filesPatterns = getFilesPatternsOfREADME(readmeContent);
+
+    if (filesPatterns.length === 0) {
+      for (let workspaceFolder of workspaceFolders) {
+        let workspacePath = workspaceFolder.uri.path;
+        let relativePath = Path.posix.relative(workspacePath, absolutePath);
+
+        if (pleaseREADMEConfigs[workspacePath]) {
+          _.remove(pleaseREADMEConfigs[workspacePath].files, {
+            path: relativePath,
+          });
+        }
+      }
+
+      return false;
+    }
 
     for (let workspaceFolder of workspaceFolders) {
       let workspacePath = workspaceFolder.uri.path;
@@ -247,8 +262,12 @@ async function loadREADMEFile(absolutePath: string): Promise<void> {
         }
       }
     }
+
+    return true;
   } else {
     output.appendLine(`no project found for README file: ${absolutePath}`);
+
+    return false;
   }
 }
 
@@ -639,8 +658,9 @@ async function handleSpecialFilesAndConditionalHint(
       case vscode.FileChangeType.Changed:
       case vscode.FileChangeType.Created:
       case 4:
-        await loadREADMEFile(filePath);
-        await readREADMEFile(filePath);
+        if (await loadREADMEFile(filePath)) {
+          await readREADMEFile(filePath);
+        }
 
         break;
 

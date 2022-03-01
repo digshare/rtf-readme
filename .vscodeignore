@@ -14,3 +14,4 @@ node_modules
 **/*.ts
 tsconfig.tsbuildinfo
 packages/**
+.rtf-readme.json

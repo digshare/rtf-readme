@@ -448,7 +448,11 @@ async function writeToCacheFile(
     path: Path.posix.resolve(workspacePath, CACHE_FILENAME),
   });
 
-  let stringToWrite = JSON.stringify(pleaseREADMEConfigsClone, undefined, 2);
+  let stringToWrite = `${JSON.stringify(
+    pleaseREADMEConfigsClone,
+    undefined,
+    2,
+  )}\n`;
 
   try {
     let cacheFileContent = (await vscode.workspace.fs.readFile(uri)).toString();

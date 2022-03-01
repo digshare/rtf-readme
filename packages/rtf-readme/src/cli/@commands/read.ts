@@ -106,7 +106,7 @@ async function writeToCacheFile(
   return new Promise<void>((resolve, reject) =>
     FS.writeFile(
       Path.join(workspacePath, CACHE_FILENAME),
-      JSON.stringify(cache, undefined, 2),
+      `${JSON.stringify(cache, undefined, 2)}\n`,
       err => {
         if (err) {
           reject(err);

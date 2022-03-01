@@ -1,5 +1,6 @@
 import simpleGit, {SimpleGit} from 'simple-git';
 
+// To get files changed in the first commit.
 export const MAGIC_GIT_INITIAL_COMMIT =
   '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 

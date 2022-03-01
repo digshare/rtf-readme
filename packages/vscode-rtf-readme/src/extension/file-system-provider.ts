@@ -36,7 +36,7 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
           type:
             event === 'change'
               ? vscode.FileChangeType.Changed
-              : (await _.exists(path))
+              : (await FSUtils.exists(path))
               ? vscode.FileChangeType.Created
               : vscode.FileChangeType.Deleted,
           uri,
@@ -54,7 +54,7 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async _stat(path: string): Promise<vscode.FileStat> {
-    const res = await _.statLink(path);
+    const res = await FSUtils.statLink(path);
     return new FileStat(res.stat, res.isSymbolicLink);
   }
 
@@ -65,7 +65,7 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async _readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
-    const children = await _.readdir(uri.fsPath);
+    const children = await FSUtils.readdir(uri.fsPath);
 
     const result: [string, vscode.FileType][] = [];
 
@@ -78,7 +78,7 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
   }
 
   createDirectory(uri: vscode.Uri): void | Thenable<void> {
-    return _.mkdir(uri.fsPath);
+    return FSUtils.mkdir(uri.fsPath);
   }
 
   readFile(uri: vscode.Uri): Uint8Array | Thenable<Uint8Array> {
@@ -134,21 +134,21 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
     content: Uint8Array,
     options: {create: boolean; overwrite: boolean},
   ): Promise<void> {
-    const exists = await _.exists(uri.fsPath);
+    const exists = await FSUtils.exists(uri.fsPath);
 
     if (!exists) {
       if (!options.create) {
         throw vscode.FileSystemError.FileNotFound();
       }
 
-      await _.mkdir(Path.dirname(uri.fsPath));
+      await FSUtils.mkdir(Path.dirname(uri.fsPath));
     } else {
       if (!options.overwrite) {
         throw vscode.FileSystemError.FileExists();
       }
     }
 
-    return _.writefile(uri.fsPath, content as Buffer);
+    return FSUtils.writefile(uri.fsPath, content as Buffer);
   }
 
   delete(
@@ -156,10 +156,10 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
     options: {recursive: boolean},
   ): void | Thenable<void> {
     if (options.recursive) {
-      return _.rmrf(uri.fsPath);
+      return FSUtils.rmrf(uri.fsPath);
     }
 
-    return _.unlink(uri.fsPath);
+    return FSUtils.unlink(uri.fsPath);
   }
 
   rename(
@@ -175,23 +175,23 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
     newUri: vscode.Uri,
     options: {overwrite: boolean},
   ): Promise<void> {
-    const exists = await _.exists(newUri.fsPath);
+    const exists = await FSUtils.exists(newUri.fsPath);
 
     if (exists) {
       if (!options.overwrite) {
         throw vscode.FileSystemError.FileExists();
       } else {
-        await _.rmrf(newUri.fsPath);
+        await FSUtils.rmrf(newUri.fsPath);
       }
     }
 
-    const parentExists = await _.exists(Path.dirname(newUri.fsPath));
+    const parentExists = await FSUtils.exists(Path.dirname(newUri.fsPath));
 
     if (!parentExists) {
-      await _.mkdir(Path.dirname(newUri.fsPath));
+      await FSUtils.mkdir(Path.dirname(newUri.fsPath));
     }
 
-    return _.rename(oldUri.fsPath, newUri.fsPath);
+    return FSUtils.rename(oldUri.fsPath, newUri.fsPath);
   }
 }
 
@@ -202,7 +202,7 @@ export interface IStatAndLink {
   isSymbolicLink: boolean;
 }
 
-namespace _ {
+namespace FSUtils {
   function handleResult<T>(
     resolve: (result: T) => void,
     reject: (error: Error) => void,
@@ -234,12 +234,6 @@ namespace _ {
     }
 
     return error;
-  }
-
-  export function checkCancellation(token: vscode.CancellationToken): void {
-    if (token.isCancellationRequested) {
-      throw new Error('Operation cancelled');
-    }
   }
 
   export function normalizeNFC(items: string): string;
@@ -359,18 +353,6 @@ export class FileStat implements vscode.FileStat {
     }
 
     return type;
-  }
-
-  get isFile(): boolean | undefined {
-    return this.fsStat.isFile();
-  }
-
-  get isDirectory(): boolean | undefined {
-    return this.fsStat.isDirectory();
-  }
-
-  get isSymbolicLink(): boolean | undefined {
-    return this._isSymbolicLink;
   }
 
   get size(): number {

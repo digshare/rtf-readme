@@ -38,6 +38,10 @@ let workspacePathToWatchDisposableDict: {
   [workspacePath: string]: vscode.Disposable;
 } = {};
 
+enum FileOpenType {
+  Opened = 4,
+}
+
 async function readCacheFile(
   uri: vscode.Uri,
   doNotWrite: boolean = false,
@@ -650,7 +654,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
 async function handleSpecialFilesAndConditionalHint(
   uri: vscode.Uri,
-  eventType: vscode.FileChangeType | 4,
+  eventType: vscode.FileChangeType | FileOpenType.Opened,
 ): Promise<void> {
   let filePath = uri.path;
   let fileName = Path.posix.basename(filePath);
@@ -659,7 +663,7 @@ async function handleSpecialFilesAndConditionalHint(
     switch (eventType) {
       case vscode.FileChangeType.Changed:
       case vscode.FileChangeType.Created:
-      case 4:
+      case FileOpenType.Opened:
         await readCacheFile(uri);
 
         break;
@@ -678,7 +682,7 @@ async function handleSpecialFilesAndConditionalHint(
     switch (eventType) {
       case vscode.FileChangeType.Changed:
       case vscode.FileChangeType.Created:
-      case 4:
+      case FileOpenType.Opened:
         if (await loadREADMEFile(filePath)) {
           await readREADMEFile(filePath);
         }
@@ -828,7 +832,7 @@ export async function activate(
 
     await handleSpecialFilesAndConditionalHint(
       vscode.Uri.from({scheme: 'file', path: absolutePath}),
-      4,
+      FileOpenType.Opened,
     );
   }
 

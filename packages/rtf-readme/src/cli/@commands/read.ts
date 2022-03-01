@@ -46,7 +46,7 @@ export default class extends Command {
     let email = (await simpleGitObject.getConfig('user.email')).value;
 
     if (!username || !email) {
-      throw Error('not a git user');
+      throw Error('Git user info is not configured or invalid');
     }
 
     let logResult = await simpleGitObject.log({file: readmeFilePath});
@@ -103,17 +103,9 @@ async function writeToCacheFile(
   workspacePath: string,
   cache: {users: UserInfo[]},
 ): Promise<void> {
-  return new Promise<void>((resolve, reject) =>
-    FS.writeFile(
-      Path.join(workspacePath, CACHE_FILENAME),
-      `${JSON.stringify(cache, undefined, 2)}\n`,
-      err => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      },
-    ),
+  // Promisify?
+  return FS.promises.writeFile(
+    Path.join(workspacePath, CACHE_FILENAME),
+    `${JSON.stringify(cache, undefined, 2)}\n`,
   );
 }

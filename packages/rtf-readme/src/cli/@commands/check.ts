@@ -57,15 +57,7 @@ export default class extends Command {
     }[] = [];
 
     for (let readmePath of readmePaths) {
-      let readmeContent = await new Promise<string>((resolve, reject) =>
-        FS.readFile(readmePath, (err, data) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(data.toString());
-          }
-        }),
-      );
+      let readmeContent = (await FS.promises.readFile(readmePath)).toString();
 
       readmeFilesPatterns.push({
         readmePosixRelativePath: pathToPosixPath(
@@ -172,10 +164,10 @@ export default class extends Command {
                     )
                   : undefined;
 
-              let count1 = 1;
+              let latestCommitReadToReadmeNowCommitCount = 1;
 
               if (latestCommitRead) {
-                count1 = Number(
+                latestCommitReadToReadmeNowCommitCount = Number(
                   await simpleGitObject.raw(
                     'rev-list',
                     `${latestCommitRead}..${readmeCommits![0]}`,
@@ -184,10 +176,10 @@ export default class extends Command {
                 );
               }
 
-              let count2 = 1;
+              let readmeCommitToReadmeNowCommitCount = 1;
 
               if (readmeCommitsByThisUser[0]) {
-                count2 = Number(
+                readmeCommitToReadmeNowCommitCount = Number(
                   await simpleGitObject.raw(
                     'rev-list',
                     `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
@@ -196,7 +188,10 @@ export default class extends Command {
                 );
               }
 
-              if (count1 > 0 && count2 > 0) {
+              if (
+                latestCommitReadToReadmeNowCommitCount > 0 &&
+                readmeCommitToReadmeNowCommitCount > 0
+              ) {
                 hasReported = true;
 
                 reportError(
@@ -241,9 +236,7 @@ export default class extends Command {
           } else {
             try {
               let readmeContent = await simpleGitObject.show([
-                `${`${commitHash}^`}:${
-                  readmeFilesPatterns[readmeIndex].readmePosixRelativePath
-                }`,
+                `${commitHash}^:${readmeFilesPatterns[readmeIndex].readmePosixRelativePath}`,
               ]);
 
               readmeFilesPatterns[readmeIndex].filesPatterns =

@@ -10,15 +10,16 @@
     "test": "yarn lint-prettier && yarn build && yarn lint"
   },
   "workspaces": [
+    "packages/rtfr-server",
     "packages/rtf-readme",
     "packages/vscode-rtf-readme"
   ],
   "devDependencies": {
     "@mufan/code": "^0.2.10",
     "@mufan/eslint-plugin": "^0.1.48",
-    "eslint": "^8.9.0",
+    "eslint": "^8.10.0",
     "prettier": "^2.5.1",
     "rimraf": "^3.0.2",
-    "typescript": "^4.5.5"
+    "typescript": "^4.6.2"
   }
 }

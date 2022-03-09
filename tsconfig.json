@@ -1,10 +1,10 @@
 {
   "references": [
     {
-      "path": "packages/rtfr-server/src/library"
+      "path": "packages/rtfr-serve/src/library"
     },
     {
-      "path": "packages/rtfr-server/src/cli"
+      "path": "packages/rtfr-serve/src/cli"
     },
     {
       "path": "packages/rtf-readme/src/library"

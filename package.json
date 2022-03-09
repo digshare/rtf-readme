@@ -10,7 +10,7 @@
     "test": "yarn lint-prettier && yarn build && yarn lint"
   },
   "workspaces": [
-    "packages/rtfr-server",
+    "packages/rtfr-serve",
     "packages/rtf-readme",
     "packages/vscode-rtf-readme"
   ],

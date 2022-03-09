@@ -1,4 +1,4 @@
-# rtfr-server
+# rtfr-serve
 
 Just another awesome magic.
 

@@ -1,7 +1,7 @@
 {
   "name": "rtf-readme",
   "publisher": "enverse",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "displayName": "rtf-README",
   "description": "README hint for users who need to read the README",
   "engines": {

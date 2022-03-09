@@ -9,3 +9,4 @@ bld/
 .bld-cache/
 dist/
 *.vsix
+rtf-readme-db/

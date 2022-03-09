@@ -24,7 +24,7 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
   watch(uri: vscode.Uri): vscode.Disposable {
     let watcher = chokidar.watch(uri.fsPath, {
       ignoreInitial: true,
-      ignored: /(^|[\/\\])\.git/,
+      ignored: /(^|[\/\\])(\.git|node_modules)/,
     });
 
     watcher.on('all', async (event, path) => {

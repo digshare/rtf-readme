@@ -2,21 +2,28 @@ import * as crypto from 'crypto';
 import * as FS from 'fs';
 import * as Path from 'path';
 
+import chalk from 'chalk';
 import {Command, command, metadata} from 'clime';
 import * as _ from 'lodash';
 import minimatch from 'minimatch';
+import fetch from 'node-fetch';
 import simpleGit, {SimpleGit} from 'simple-git';
+import table from 'text-table';
 
 import {
-  CACHE_FILENAME,
+  CONFIG_FILENAME,
+  Cache,
+  Config,
   MAGIC_GIT_INITIAL_COMMIT,
   README_FILE_NAMES,
-  UserInfo,
   getFilesPatternsOfREADME,
+  getServeUrl,
   pathToPosixPath,
   posixPathToPath,
 } from '../../library';
 import {READMECliOptions} from '../@options';
+
+let errorStringForAlignment: string[][] = [];
 
 @command({
   description: 'Return error when README has not been read if needed',
@@ -28,18 +35,28 @@ export default class extends Command {
       ? Path.resolve(process.cwd(), options.dir)
       : process.cwd();
 
-    let cacheFilePath = Path.join(workspacePath, CACHE_FILENAME);
-    let cacheFileContent!: string;
+    let configFilePath = Path.join(workspacePath, CONFIG_FILENAME);
+    let config: Config;
 
     try {
-      cacheFileContent = FS.readFileSync(cacheFilePath).toString();
+      config = JSON.parse(FS.readFileSync(configFilePath).toString());
     } catch (e) {
-      console.warn('No cache file');
+      console.error('read config failed');
 
-      cacheFileContent = JSON.stringify({users: []});
+      console.error(e);
+
+      return;
     }
 
-    let cache = JSON.parse(cacheFileContent) as {users: UserInfo[]};
+    let cache: Cache;
+
+    try {
+      cache = (await (await fetch(getServeUrl(config))).json()) as Cache;
+    } catch (e) {
+      console.warn('No cache file got.');
+
+      cache = {users: []};
+    }
 
     let simpleGitObject = simpleGit(workspacePath);
 
@@ -71,7 +88,22 @@ export default class extends Command {
       (await simpleGitObject.raw('log', '--pretty=format:%H')).split('\n'),
     );
 
-    let fromInitialCommit = commitHashs.length <= 100;
+    let commitHashsLength = commitHashs.length;
+
+    if (config.init) {
+      let initIndex = commitHashs.findIndex(
+        commitHash => commitHash === config.init,
+      );
+
+      if (initIndex !== -1) {
+        commitHashs = commitHashs.slice(0, initIndex + 1);
+      }
+    }
+
+    let fromInitialCommit =
+      commitHashsLength === commitHashs.length
+        ? commitHashsLength <= 100
+        : false;
 
     commitHashs = commitHashs.slice(0, 100);
 
@@ -107,7 +139,6 @@ export default class extends Command {
               readmeFilesPattern.readmePosixRelativePath;
             let md5String = getMD5OfCertainFileInGitAndREADME(
               user,
-              commitFile,
               readmePosixRelativePath,
             );
             let result = md5ToReportedFilesMap.get(md5String);
@@ -115,7 +146,6 @@ export default class extends Command {
             if (
               _.find(result, {
                 user,
-                commitFile,
                 readmePath: readmePosixRelativePath,
               })
             ) {
@@ -194,24 +224,17 @@ export default class extends Command {
               ) {
                 hasReported = true;
 
-                reportError(
-                  user,
-                  workspacePosixPath,
-                  commitFile,
-                  readmePosixRelativePath,
-                );
+                reportError(user, readmePosixRelativePath);
 
                 if (result) {
                   result.push({
                     user,
-                    commitFile,
                     readmePath: readmePosixRelativePath,
                   });
                 } else {
                   md5ToReportedFilesMap.set(md5String, [
                     {
                       user,
-                      commitFile,
                       readmePath: readmePosixRelativePath,
                     },
                   ]);
@@ -250,7 +273,9 @@ export default class extends Command {
     }
 
     if (hasReported) {
-      throw new Error("There's some READMEs not read");
+      flushErrors();
+
+      throw new Error("There're some READMEs not read");
     }
   }
 }
@@ -329,30 +354,25 @@ async function getCommitFiles(
 
 function reportError(
   user: {name: string; email: string},
-  workspacePosixPath: string,
-  commitFile: string,
   readmePosixRelativePath: string,
 ): void {
-  console.error(
-    `User: ${JSON.stringify(user)}, File "${posixPathToPath(
-      Path.posix.join(workspacePosixPath, commitFile),
-    )}" changed but README "${posixPathToPath(
-      Path.posix.join(workspacePosixPath, readmePosixRelativePath),
-    )}" not read`,
-  );
+  errorStringForAlignment.push([
+    'User:',
+    `${chalk.green(`${user.name} <${user.email}>`)},`,
+    'README:',
+    chalk.yellow(`./${posixPathToPath(readmePosixRelativePath)}`),
+  ]);
+}
+
+function flushErrors(): void {
+  console.error(table(errorStringForAlignment));
 }
 
 function getMD5OfCertainFileInGitAndREADME(
   user: {name: string; email: string},
-  commitFile: string,
   readmePosixRelativePath: string,
 ): string {
-  return md5(
-    md5(user.name) +
-      md5(user.email) +
-      md5(commitFile) +
-      md5(readmePosixRelativePath),
-  );
+  return md5(md5(user.name) + md5(user.email) + md5(readmePosixRelativePath));
 }
 
 function md5(content: string): string {

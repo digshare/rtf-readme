@@ -1,14 +1,16 @@
 import * as Path from 'path';
-import {TextEncoder} from 'util';
 
 import * as _ from 'lodash';
 import minimatch from 'minimatch';
+import fetch from 'node-fetch';
 import {
-  CACHE_FILENAME,
+  CONFIG_FILENAME,
+  Config,
   READMEInfo,
   README_FILE_NAMES,
   UserInfo,
   getFilesPatternsOfREADME,
+  getServeUrl,
   getSimpleGitObject,
   pathToPosixPath,
   posixPathToPath,
@@ -23,14 +25,15 @@ let output!: vscode.OutputChannel;
 
 let loadREADMEFilePromises: Promise<boolean>[] = [];
 
-let writeToCacheFilePromise: Promise<void> = Promise.resolve();
+let updateCacheFilePromise: Promise<void> = Promise.resolve();
 
-interface PleaseREADMEConfig {
+interface RTFREADMECache {
   files: READMEInfo[];
   users: UserInfo[];
 }
 
-let pleaseREADMEConfigs: {[path: string]: PleaseREADMEConfig} = {};
+let workspacePathToConfigDict: {[path: string]: Config} = {};
+let workspacePathToRTFREADMECacheDict: {[path: string]: RTFREADMECache} = {};
 
 let workspacePathToGitDict: {[workspacePath: string]: SimpleGit} = {};
 
@@ -40,121 +43,6 @@ let workspacePathToWatchDisposableDict: {
 
 enum FileOpenType {
   Opened = 4,
-}
-
-async function readCacheFile(
-  uri: vscode.Uri,
-  doNotWrite: boolean = false,
-): Promise<void> {
-  let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-
-  let path = uri.path;
-
-  if (workspaceFolder) {
-    let workspacePath = workspaceFolder.uri.path;
-    let simpleGitObject = workspacePathToGitDict[workspacePath];
-
-    try {
-      let config =
-        (JSON.parse(
-          (await vscode.workspace.fs.readFile(uri)).toString(),
-        ) as PleaseREADMEConfig) || {};
-
-      config.users = config.users || [];
-
-      let configModified = false;
-
-      for (let user of config.users) {
-        if (!user.name || !user.email) {
-          throw Error('Invalid user name or email.');
-        }
-
-        user.files = user.files || [];
-
-        if (user.files.length <= 1) {
-          continue;
-        }
-
-        let groups = _.groupBy(user.files, 'path');
-
-        let userFiles = [];
-
-        for (let [, group] of Object.entries(groups)) {
-          let file = group[0];
-
-          if (group.length === 1) {
-            userFiles.push(file);
-
-            continue;
-          }
-
-          for (let iterFile of group) {
-            if (file.commit === iterFile.commit) {
-              continue;
-            }
-
-            let count = await simpleGitObject.raw(
-              'rev-list',
-              `${file.commit}..${iterFile.commit}`,
-              '--count',
-            );
-
-            if (Number(count) > 0) {
-              file = iterFile;
-            }
-          }
-
-          userFiles.push(file);
-        }
-
-        if (!_.isEqual(user.files, userFiles)) {
-          configModified = true;
-
-          user.files = userFiles;
-        }
-      }
-
-      if (pleaseREADMEConfigs[workspacePath]) {
-        pleaseREADMEConfigs[workspacePath].users = config.users;
-      } else {
-        pleaseREADMEConfigs[workspacePath] = {users: config.users, files: []};
-      }
-
-      if (!doNotWrite && configModified) {
-        writeToCacheFileWithPromise(workspacePath);
-      }
-    } catch (e) {
-      output.appendLine(
-        `The config file ${path} is not valid.\n${(e as any).toString()}`,
-      );
-    }
-  } else {
-    output.appendLine(
-      `This README file ${path} does not belong to any workspace.`,
-    );
-  }
-}
-
-function deleteCacheFile(uri: vscode.Uri): void {
-  let workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-
-  let path = uri.path;
-
-  if (workspaceFolder) {
-    try {
-      pleaseREADMEConfigs[workspaceFolder.uri.path].users = [];
-    } catch (e) {
-      output.appendLine(
-        `The config file ${path} deletion has not succeeded.\n${(
-          e as any
-        ).toString()}`,
-      );
-    }
-  } else {
-    output.appendLine(
-      `This README file ${path} does not belong to any workspace.`,
-    );
-  }
 }
 
 async function loadREADMEFile(absolutePath: string): Promise<boolean> {
@@ -175,8 +63,8 @@ async function loadREADMEFile(absolutePath: string): Promise<boolean> {
         let workspacePath = workspaceFolder.uri.path;
         let relativePath = Path.posix.relative(workspacePath, absolutePath);
 
-        if (pleaseREADMEConfigs[workspacePath]) {
-          _.remove(pleaseREADMEConfigs[workspacePath].files, {
+        if (workspacePathToRTFREADMECacheDict[workspacePath]) {
+          _.remove(workspacePathToRTFREADMECacheDict[workspacePath].files, {
             path: relativePath,
           });
         }
@@ -226,8 +114,8 @@ async function loadREADMEFile(absolutePath: string): Promise<boolean> {
         continue;
       }
 
-      if (!pleaseREADMEConfigs[workspacePath]) {
-        pleaseREADMEConfigs[workspacePath] = {
+      if (!workspacePathToRTFREADMECacheDict[workspacePath]) {
+        workspacePathToRTFREADMECacheDict[workspacePath] = {
           files: [
             {
               path: relativePath,
@@ -239,20 +127,22 @@ async function loadREADMEFile(absolutePath: string): Promise<boolean> {
         };
       } else {
         let readmeInfoIndex = _.findIndex(
-          pleaseREADMEConfigs[workspacePath].files,
+          workspacePathToRTFREADMECacheDict[workspacePath].files,
           {
             path: relativePath,
           },
         );
 
         if (readmeInfoIndex === -1) {
-          pleaseREADMEConfigs[workspacePath].files.push({
+          workspacePathToRTFREADMECacheDict[workspacePath].files.push({
             path: relativePath,
             filesPatterns,
             commit,
           });
         } else {
-          pleaseREADMEConfigs[workspacePath].files[readmeInfoIndex] = {
+          workspacePathToRTFREADMECacheDict[workspacePath].files[
+            readmeInfoIndex
+          ] = {
             path: relativePath,
             filesPatterns,
             commit,
@@ -293,7 +183,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
 
       let relativePath = Path.posix.relative(workspacePath, absolutePath);
 
-      let config = pleaseREADMEConfigs[workspacePath];
+      let config = workspacePathToRTFREADMECacheDict[workspacePath];
 
       if (!config) {
         config = {
@@ -301,7 +191,7 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
           users: [],
         };
 
-        pleaseREADMEConfigs[workspacePath] = config;
+        workspacePathToRTFREADMECacheDict[workspacePath] = config;
       }
 
       let readme = _.find(config.files, {path: relativePath});
@@ -325,12 +215,18 @@ async function readREADMEFile(absolutePath: string): Promise<void> {
       let file = _.find(user.files, {path: relativePath});
 
       if (!file) {
-        user.files.push({path: relativePath, commit: readme.commit});
+        file = {path: relativePath, commit: readme.commit};
+
+        user.files.push(file);
       } else if (file.commit !== readme.commit) {
         file.commit = readme.commit;
       }
 
-      writeToCacheFileWithPromise(workspacePath, true);
+      updateCacheFileWithPromise(workspacePath, {
+        name: user.name,
+        email: user.email,
+        files: [file],
+      });
     }
   }
 }
@@ -344,10 +240,10 @@ function deleteREADMEFile(absolutePath: string): void {
     for (let workspaceFolder of workspaceFolders) {
       let workspacePath = workspaceFolder.uri.path;
 
-      let readmes = pleaseREADMEConfigs[workspacePath].files;
+      let readmes = workspacePathToRTFREADMECacheDict[workspacePath].files;
 
       if (readmes) {
-        pleaseREADMEConfigs[workspacePath].files = readmes.filter(
+        workspacePathToRTFREADMECacheDict[workspacePath].files = readmes.filter(
           readme =>
             readme.path !== Path.posix.relative(workspacePath, absolutePath),
         );
@@ -362,31 +258,41 @@ function deleteREADMEFile(absolutePath: string): void {
   }
 }
 
-async function loadCacheFile(workspacePath: string): Promise<void> {
-  let cacheFilePath = Path.posix.resolve(workspacePath, CACHE_FILENAME);
-  let uri = vscode.Uri.from({scheme: 'file', path: cacheFilePath});
+async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
+  let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
+  let uri = vscode.Uri.from({scheme: 'file', path: configFilePath});
 
   try {
     let stat = await vscode.workspace.fs.stat(uri);
 
     if (stat.type === vscode.FileType.File) {
-      await readCacheFile(uri, true);
+      let config = (workspacePathToConfigDict[workspacePath] =
+        (JSON.parse(
+          (await vscode.workspace.fs.readFile(uri)).toString(),
+        ) as Config) || {});
+
+      let response = await fetch(getServeUrl(config));
+
+      workspacePathToRTFREADMECacheDict[workspacePath] = {
+        ...JSON.parse(await response.text()),
+        files: [],
+      };
     }
   } catch (e) {
     output.appendLine(
-      `load config file of workspace ${workspacePath} failed.\n${(
+      `load config file and cache of workspace ${workspacePath} failed.\n${(
         e as any
       ).toString()}`,
     );
   }
 }
 
-async function loadCacheFiles(): Promise<void> {
+async function loadConfigAndGetCacheFiles(): Promise<void> {
   let workspaceFolders = vscode.workspace.workspaceFolders;
 
   if (workspaceFolders) {
     for (let workspaceFolder of workspaceFolders) {
-      await loadCacheFile(workspaceFolder.uri.path);
+      await loadConfigAndGetCacheFile(workspaceFolder.uri.path);
     }
   }
 }
@@ -431,64 +337,102 @@ async function walkThroughFilesToLoadREADME(
 }
 
 async function loadFiles(): Promise<void> {
-  await loadCacheFiles();
+  await loadConfigAndGetCacheFiles();
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     await walkThroughFilesToLoadREADME(workspaceFolder.uri.path);
   }
 }
 
-async function writeToCacheFile(
+async function updateCacheFile(
   workspacePath: string,
-  mustWriteFile: boolean,
+  userInfo: UserInfo,
 ): Promise<void> {
-  let pleaseREADMEConfig = pleaseREADMEConfigs[workspacePath] || {
-    files: [],
-    users: [],
-  };
-  let pleaseREADMEConfigsClone: any = {users: pleaseREADMEConfig.users};
-  let uri = vscode.Uri.from({
-    scheme: 'file',
-    path: Path.posix.resolve(workspacePath, CACHE_FILENAME),
-  });
-
-  let stringToWrite = `${JSON.stringify(
-    pleaseREADMEConfigsClone,
-    undefined,
-    2,
-  )}\n`;
+  let config = workspacePathToConfigDict[workspacePath];
 
   try {
-    let cacheFileContent = (await vscode.workspace.fs.readFile(uri)).toString();
+    let response = await fetch(getServeUrl(config), {
+      method: 'post',
+      body: JSON.stringify(userInfo),
+      headers: {'Content-Type': 'application/json'},
+    });
 
-    if (stringToWrite !== cacheFileContent) {
-      await vscode.workspace.fs.writeFile(
-        uri,
-        new TextEncoder().encode(stringToWrite),
+    let responseString = await response.text();
+
+    if (responseString === 'ok') {
+      return;
+    }
+
+    if (responseString === 'Not Found') {
+      output.appendLine(
+        'Something is wrong on the server side. Did you create a token on the server side?',
+      );
+
+      return;
+    }
+
+    if (userInfo.files.length === 0) {
+      output.appendLine(
+        "When the length of files is 0, the server should return 'ok' as respones.",
+      );
+
+      return;
+    }
+
+    let responseObject = JSON.parse(responseString);
+
+    let simpleGitObject = workspacePathToGitDict[workspacePath];
+
+    let readmeRelativePosixPath = userInfo.files[0].path;
+
+    let filesNeededToBeDeleted: {path: string; commit: string}[] = [];
+
+    let commits = _.compact(
+      (
+        await simpleGitObject.raw(
+          'log',
+          '--pretty=format:%H',
+          readmeRelativePosixPath,
+        )
+      ).split('\n'),
+    ).slice(1);
+
+    for (let file of responseObject.files) {
+      if (file.path !== readmeRelativePosixPath) {
+        continue;
+      }
+
+      if (commits.includes(file.commit)) {
+        filesNeededToBeDeleted.push(file);
+      }
+    }
+
+    response = await fetch(getServeUrl(config), {
+      method: 'put',
+      body: JSON.stringify({
+        name: userInfo.name,
+        email: userInfo.email,
+        files: filesNeededToBeDeleted,
+      }),
+      headers: {'Content-Type': 'application/json'},
+    });
+
+    if ((await response.text()) !== 'ok') {
+      output.appendLine(
+        'Delete repeated README record on the server side failed.',
       );
     }
   } catch (e) {
-    let errorMessage = (e as any).toString();
-
-    if (errorMessage.startsWith('EntryNotFound')) {
-      if (mustWriteFile) {
-        await vscode.workspace.fs.writeFile(
-          uri,
-          new TextEncoder().encode(stringToWrite),
-        );
-      }
-    } else {
-      output.appendLine(`write to cache failed. ${errorMessage}`);
-    }
+    output.appendLine((e as any).toString());
   }
 }
 
-function writeToCacheFileWithPromise(
+function updateCacheFileWithPromise(
   workspacePath: string,
-  mustWriteFile: boolean = true,
+  userInfo: UserInfo,
 ): void {
-  writeToCacheFilePromise = writeToCacheFilePromise
-    .then(() => writeToCacheFile(workspacePath, mustWriteFile))
+  updateCacheFilePromise = updateCacheFilePromise
+    .then(() => updateCacheFile(workspacePath, userInfo))
     .then(
       () => {},
       err => err,
@@ -496,14 +440,17 @@ function writeToCacheFileWithPromise(
     .then(err => err && output.appendLine(err.toString()));
 }
 
-async function writeToCacheFiles(): Promise<void> {
-  for (const workspacePath of Object.keys(pleaseREADMEConfigs)) {
-    writeToCacheFileWithPromise(workspacePath, false);
-  }
-}
-
 async function hintIfNotRead(absolutePath: string): Promise<void> {
-  for (let [workspacePath, config] of Object.entries(pleaseREADMEConfigs)) {
+  if (
+    absolutePath.indexOf('node_modules') !== -1 ||
+    absolutePath.indexOf('.git') !== -1
+  ) {
+    return;
+  }
+
+  for (let [workspacePath, config] of Object.entries(
+    workspacePathToRTFREADMECacheDict,
+  )) {
     if (!absolutePath.startsWith(workspacePath)) {
       continue;
     }
@@ -559,7 +506,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
         config.users.push(user);
 
-        writeToCacheFileWithPromise(workspacePath, false);
+        updateCacheFileWithPromise(workspacePath, user);
       }
 
       // if the readme has been read, do not hint
@@ -659,26 +606,7 @@ async function handleSpecialFilesAndConditionalHint(
   let filePath = uri.path;
   let fileName = Path.posix.basename(filePath);
 
-  if (fileName === CACHE_FILENAME) {
-    switch (eventType) {
-      case vscode.FileChangeType.Changed:
-      case vscode.FileChangeType.Created:
-      case FileOpenType.Opened:
-        await readCacheFile(uri);
-
-        break;
-
-      case vscode.FileChangeType.Deleted:
-        deleteCacheFile(uri);
-
-        break;
-
-      default:
-        output.appendLine('Unexpected event type!');
-
-        break;
-    }
-  } else if (README_FILE_NAMES.includes(fileName)) {
+  if (README_FILE_NAMES.includes(fileName)) {
     switch (eventType) {
       case vscode.FileChangeType.Changed:
       case vscode.FileChangeType.Created:
@@ -747,7 +675,7 @@ export async function activate(
 
         workspacePathToWatchDisposableDict[addedWorkspacePath] = disposable;
 
-        await loadCacheFile(addedWorkspacePath);
+        await loadConfigAndGetCacheFile(addedWorkspacePath);
 
         let simpleGitObject: SimpleGit | undefined = getSimpleGitObject(
           posixPathToPath(addedWorkspacePath),
@@ -773,13 +701,15 @@ export async function activate(
           delete workspacePathToWatchDisposableDict[removedWorkspacePath];
         }
 
-        if (pleaseREADMEConfigs[removedWorkspacePath]) {
-          delete pleaseREADMEConfigs[removedWorkspacePath];
+        if (workspacePathToRTFREADMECacheDict[removedWorkspacePath]) {
+          delete workspacePathToRTFREADMECacheDict[removedWorkspacePath];
         }
 
         if (workspacePathToGitDict[removedWorkspacePath]) {
           delete workspacePathToGitDict[removedWorkspacePath];
         }
+
+        delete workspacePathToConfigDict[removedWorkspacePath];
       }
     }),
   );
@@ -816,8 +746,6 @@ export async function activate(
   await loadFiles();
 
   await Promise.all(loadREADMEFilePromises);
-
-  await writeToCacheFiles();
 
   for (let document of vscode.workspace.textDocuments) {
     let absolutePath = pathToPosixPath(document.fileName);

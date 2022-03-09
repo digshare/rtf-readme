@@ -3,9 +3,16 @@ import * as Path from 'path';
 
 import {Command, command, metadata, param} from 'clime';
 import * as _ from 'lodash';
+import fetch from 'node-fetch';
 import simpleGit from 'simple-git';
 
-import {CACHE_FILENAME, UserInfo, pathToPosixPath} from '../../library';
+import {
+  CONFIG_FILENAME,
+  Config,
+  UserInfo,
+  getServeUrl,
+  pathToPosixPath,
+} from '../../library';
 import {READMECliOptions} from '../@options';
 
 @command({
@@ -25,18 +32,18 @@ export default class extends Command {
       ? Path.resolve(process.cwd(), options.dir)
       : process.cwd();
 
-    let cacheFilePath = Path.join(workspacePath, CACHE_FILENAME);
-    let cacheFileContent!: string;
+    let configFilePath = Path.join(workspacePath, CONFIG_FILENAME);
+    let config: Config;
 
     try {
-      cacheFileContent = FS.readFileSync(cacheFilePath).toString();
+      config = JSON.parse(FS.readFileSync(configFilePath).toString());
     } catch (e) {
-      console.warn('No cache file');
+      console.error('read config failed');
 
-      cacheFileContent = JSON.stringify({users: []});
+      console.error(e);
+
+      return;
     }
-
-    let cache = JSON.parse(cacheFileContent) as {users: UserInfo[]};
 
     let simpleGitObject = simpleGit(workspacePath);
 
@@ -49,63 +56,86 @@ export default class extends Command {
       throw Error('Git user info is not configured or invalid');
     }
 
-    let logResult = await simpleGitObject.log({file: readmeFilePath});
+    let commits = _.compact(
+      (
+        await simpleGitObject.raw(
+          'log',
+          '-1',
+          '--pretty=format:%H',
+          readmeFilePath,
+        )
+      ).split('\n'),
+    );
 
-    if (logResult.latest === null) {
+    if (commits.length === 0) {
+      console.warn("This README hasn't been committed yet.");
+
       return;
     }
 
-    let commit = logResult.latest.hash;
+    let commit = commits[0];
 
-    if (Array.isArray(cache.users)) {
-      let user = _.find(cache.users, {name: username, email});
+    let readmeRelativePosixPath = pathToPosixPath(
+      Path.relative(workspacePath, readmeFilePath),
+    );
 
-      let readmeRelativePosixPath = pathToPosixPath(
-        Path.relative(workspacePath, readmeFilePath),
-      );
+    let user: UserInfo = {
+      name: username,
+      email,
+      files: [
+        {
+          path: readmeRelativePosixPath,
+          commit,
+        },
+      ],
+    };
 
-      if (!user) {
-        user = {
-          name: username,
-          email,
-          files: [
-            {
-              path: readmeRelativePosixPath,
-              commit,
-            },
-          ],
-        };
+    let response = await fetch(getServeUrl(config), {
+      method: 'post',
+      body: JSON.stringify(user),
+      headers: {'Content-Type': 'application/json'},
+    });
 
-        cache.users.push(user);
-      } else {
-        let file = _.find(user.files, {path: readmeRelativePosixPath});
+    let responseString = await response.text();
 
-        if (!file) {
-          user.files.push({
-            path: readmeRelativePosixPath,
-            commit,
-          });
-        } else {
-          file.commit = commit;
-        }
-      }
-
-      await writeToCacheFile(workspacePath, cache);
-    } else {
-      console.warn('invalid cache file.');
+    if (responseString === 'ok') {
+      return;
     }
 
-    return;
-  }
-}
+    let responseObject = JSON.parse(responseString);
 
-async function writeToCacheFile(
-  workspacePath: string,
-  cache: {users: UserInfo[]},
-): Promise<void> {
-  // Promisify?
-  return FS.promises.writeFile(
-    Path.join(workspacePath, CACHE_FILENAME),
-    `${JSON.stringify(cache, undefined, 2)}\n`,
-  );
+    let filesNeededToBeDeleted: {path: string; commit: string}[] = [];
+
+    commits = _.compact(
+      (
+        await simpleGitObject.raw('log', '--pretty=format:%H', readmeFilePath)
+      ).split('\n'),
+    ).slice(1);
+
+    for (let file of responseObject.files) {
+      if (file.path !== readmeRelativePosixPath) {
+        continue;
+      }
+
+      if (commits.includes(file.commit)) {
+        filesNeededToBeDeleted.push(file);
+      }
+    }
+
+    response = await fetch(getServeUrl(config), {
+      method: 'put',
+      body: JSON.stringify({
+        name: username,
+        email,
+        files: filesNeededToBeDeleted,
+      }),
+      headers: {'Content-Type': 'application/json'},
+    });
+
+    if ((await response.text()) !== 'ok') {
+      throw new Error(
+        'Delete repeated README record on the server side failed.',
+      );
+    }
+  }
 }

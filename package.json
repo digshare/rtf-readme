@@ -41,7 +41,7 @@
     "test": "node ./packages/vscode-rtf-readme/bld/extension/test/runTest.js"
   },
   "workspaces": [
-    "packages/rtfr-server",
+    "packages/rtfr-serve",
     "packages/rtf-readme",
     "packages/vscode-rtf-readme"
   ],

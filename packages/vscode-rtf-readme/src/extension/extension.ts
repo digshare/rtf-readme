@@ -368,7 +368,7 @@ async function updateCacheFile(
 
     if (userInfo.files.length === 0) {
       output.appendLine(
-        "When the length of files is 0, the server should return 'ok' as respones.",
+        "When the length of files is 0, the server should return 'ok' as response.",
       );
 
       return;

@@ -1,4 +1,3 @@
-import * as FS from 'fs';
 import * as Path from 'path';
 
 import {Command, command, metadata, param} from 'clime';
@@ -8,15 +7,17 @@ import simpleGit from 'simple-git';
 
 import {
   CONFIG_FILENAME,
-  Config,
+  TransformedConfig,
   UserInfo,
   getServeUrl,
+  globMatch,
   pathToPosixPath,
+  readConfigFile,
 } from '../../library';
 import {READMECliOptions} from '../@options';
 
 @command({
-  description: 'Read README',
+  description: 'Read README and record this reading behavior.',
 })
 export default class extends Command {
   @metadata
@@ -33,10 +34,10 @@ export default class extends Command {
       : process.cwd();
 
     let configFilePath = Path.join(workspacePath, CONFIG_FILENAME);
-    let config: Config;
+    let config: TransformedConfig;
 
     try {
-      config = JSON.parse(FS.readFileSync(configFilePath).toString());
+      config = await readConfigFile(configFilePath);
     } catch (e) {
       console.error('read config failed');
 
@@ -49,7 +50,34 @@ export default class extends Command {
 
     let readmeFilePath = Path.resolve(workspacePath, readmePath);
 
+    let workspacePosixPath = pathToPosixPath(workspacePath);
+    let readmePosixFilePath = pathToPosixPath(readmeFilePath);
+
+    if (
+      globMatch(
+        readmePosixFilePath,
+        workspacePosixPath,
+        config.ignore || [],
+        [],
+      )
+    ) {
+      console.warn('You read a README that is ignoerd by this program.');
+
+      return;
+    }
+
+    if (
+      !globMatch(readmePosixFilePath, workspacePath, config.readme || [], [])
+    ) {
+      console.warn(
+        'This is not a README or you forget to add README pattern in .rtfrrc.',
+      );
+
+      return;
+    }
+
     let username = (await simpleGitObject.getConfig('user.name')).value;
+
     let email = (await simpleGitObject.getConfig('user.email')).value;
 
     if (!username || !email) {

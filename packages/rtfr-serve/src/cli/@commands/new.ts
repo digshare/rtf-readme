@@ -2,7 +2,7 @@ import * as Path from 'path';
 
 import {Command, Options, command, metadata, option} from 'clime';
 
-import {newDBRecordAndGetToken} from './@utils';
+import {newDBRecordAndGetToken} from '../@utils';
 
 export class NewProjectOptions extends Options {
   @option({

@@ -1,9 +1,6 @@
-import * as FS from 'fs';
-import * as Path from 'path';
-
 import {nanoid} from 'nanoid';
 
-import {getDBObject} from '../../library';
+import {getDBObject} from '../library';
 
 export async function newDBRecordAndGetToken(
   optionsPath: string,

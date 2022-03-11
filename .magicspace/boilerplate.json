@@ -6,6 +6,18 @@
     "author": "Chengdu Mufan Technology Co., Ltd.",
     "packages": [
       {
+        "name": "rtfr-serve",
+        "tsProjects": [
+          {
+            "name": "library"
+          },
+          {
+            "name": "cli",
+            "references": ["library"]
+          }
+        ]
+      },
+      {
         "name": "rtf-readme",
         "tsProjects": [
           {
@@ -13,9 +25,7 @@
           },
           {
             "name": "cli",
-            "references": [
-              "library"
-            ]
+            "references": ["library"]
           }
         ]
       },

@@ -1,17 +1,16 @@
 import * as Path from 'path';
 
 import * as _ from 'lodash';
-import minimatch from 'minimatch';
 import fetch from 'node-fetch';
 import {
   CONFIG_FILENAME,
-  Config,
   READMEInfo,
-  README_FILE_NAMES,
+  TransformedConfig,
   UserInfo,
   getFilesPatternsOfREADME,
   getServeUrl,
   getSimpleGitObject,
+  globMatch,
   pathToPosixPath,
   posixPathToPath,
 } from 'rtf-readme';
@@ -32,7 +31,7 @@ interface RTFREADMECache {
   users: UserInfo[];
 }
 
-let workspacePathToConfigDict: {[path: string]: Config} = {};
+let workspacePathToConfigDict: {[path: string]: TransformedConfig} = {};
 let workspacePathToRTFREADMECacheDict: {[path: string]: RTFREADMECache} = {};
 
 let workspacePathToGitDict: {[workspacePath: string]: SimpleGit} = {};
@@ -45,216 +44,191 @@ enum FileOpenType {
   Opened = 4,
 }
 
-async function loadREADMEFile(absolutePath: string): Promise<boolean> {
-  let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
-    workspaceFolder => absolutePath.startsWith(workspaceFolder.uri.path),
-  );
+async function loadREADMEFile(
+  absolutePosixPath: string,
+  workspacePosixPath: string,
+): Promise<boolean> {
+  let readmeContent = (
+    await vscode.workspace.fs.readFile(
+      vscode.Uri.from({scheme: 'file', path: absolutePosixPath}),
+    )
+  ).toString();
+  let filesPatterns = getFilesPatternsOfREADME(readmeContent);
 
-  if (workspaceFolders) {
-    let readmeContent = (
-      await vscode.workspace.fs.readFile(
-        vscode.Uri.from({scheme: 'file', path: absolutePath}),
-      )
-    ).toString();
-    let filesPatterns = getFilesPatternsOfREADME(readmeContent);
+  if (filesPatterns.length === 0) {
+    let relativePath = Path.posix.relative(
+      workspacePosixPath,
+      absolutePosixPath,
+    );
 
-    if (filesPatterns.length === 0) {
-      for (let workspaceFolder of workspaceFolders) {
-        let workspacePath = workspaceFolder.uri.path;
-        let relativePath = Path.posix.relative(workspacePath, absolutePath);
-
-        if (workspacePathToRTFREADMECacheDict[workspacePath]) {
-          _.remove(workspacePathToRTFREADMECacheDict[workspacePath].files, {
-            path: relativePath,
-          });
-        }
-      }
-
-      return false;
+    if (workspacePathToRTFREADMECacheDict[workspacePosixPath]) {
+      _.remove(workspacePathToRTFREADMECacheDict[workspacePosixPath].files, {
+        path: relativePath,
+      });
     }
-
-    for (let workspaceFolder of workspaceFolders) {
-      let workspacePath = workspaceFolder.uri.path;
-      let relativePath = Path.posix.relative(workspacePath, absolutePath);
-
-      let commit: string | undefined;
-
-      let simpleGitObject = workspacePathToGitDict[workspacePath];
-
-      if (!simpleGitObject) {
-        continue;
-      }
-
-      try {
-        let logResult = _.compact(
-          (
-            await simpleGitObject.raw(
-              'log',
-              '-1',
-              '--pretty=format:%H',
-              posixPathToPath(absolutePath),
-            )
-          ).split('\n'),
-        );
-
-        commit = logResult[0];
-      } catch (e) {
-        if (
-          !(e as any)
-            .toString()
-            .startsWith(
-              "Error: fatal: your current branch 'master' does not have any commits yet",
-            )
-        ) {
-          output.appendLine(`get log failed.\n${(e as any).toString()}`);
-        }
-      }
-
-      if (commit === undefined) {
-        continue;
-      }
-
-      if (!workspacePathToRTFREADMECacheDict[workspacePath]) {
-        workspacePathToRTFREADMECacheDict[workspacePath] = {
-          files: [
-            {
-              path: relativePath,
-              filesPatterns,
-              commit,
-            },
-          ],
-          users: [],
-        };
-      } else {
-        let readmeInfoIndex = _.findIndex(
-          workspacePathToRTFREADMECacheDict[workspacePath].files,
-          {
-            path: relativePath,
-          },
-        );
-
-        if (readmeInfoIndex === -1) {
-          workspacePathToRTFREADMECacheDict[workspacePath].files.push({
-            path: relativePath,
-            filesPatterns,
-            commit,
-          });
-        } else {
-          workspacePathToRTFREADMECacheDict[workspacePath].files[
-            readmeInfoIndex
-          ] = {
-            path: relativePath,
-            filesPatterns,
-            commit,
-          };
-        }
-      }
-    }
-
-    return true;
-  } else {
-    output.appendLine(`no project found for README file: ${absolutePath}`);
 
     return false;
   }
-}
 
-async function readREADMEFile(absolutePath: string): Promise<void> {
-  let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
-    workspaceFolder => absolutePath.startsWith(workspaceFolder.uri.path),
-  );
+  let relativePath = Path.posix.relative(workspacePosixPath, absolutePosixPath);
 
-  if (workspaceFolders) {
-    for (let workspaceFolder of workspaceFolders) {
-      let workspacePath = workspaceFolder.uri.path;
+  let commit: string | undefined;
 
-      let simpleGitObject = workspacePathToGitDict[workspacePath];
+  let simpleGitObject = workspacePathToGitDict[workspacePosixPath];
 
-      if (!simpleGitObject) {
-        continue;
-      }
+  if (!simpleGitObject) {
+    return true;
+  }
 
-      let username = (await simpleGitObject.getConfig('user.name')).value;
-      let email = (await simpleGitObject.getConfig('user.email')).value;
+  try {
+    let logResult = _.compact(
+      (
+        await simpleGitObject.raw(
+          'log',
+          '-1',
+          '--pretty=format:%H',
+          posixPathToPath(absolutePosixPath),
+        )
+      ).split('\n'),
+    );
 
-      if (!username || !email) {
-        continue;
-      }
-
-      let relativePath = Path.posix.relative(workspacePath, absolutePath);
-
-      let config = workspacePathToRTFREADMECacheDict[workspacePath];
-
-      if (!config) {
-        config = {
-          files: [],
-          users: [],
-        };
-
-        workspacePathToRTFREADMECacheDict[workspacePath] = config;
-      }
-
-      let readme = _.find(config.files, {path: relativePath});
-
-      if (!readme || !readme.commit) {
-        continue;
-      }
-
-      let user = _.find(config.users, {name: username, email});
-
-      if (!user) {
-        user = {
-          name: username,
-          email,
-          files: [],
-        };
-
-        config.users.push(user);
-      }
-
-      let file = _.find(user.files, {path: relativePath});
-
-      if (!file) {
-        file = {path: relativePath, commit: readme.commit};
-
-        user.files.push(file);
-      } else if (file.commit !== readme.commit) {
-        file.commit = readme.commit;
-      }
-
-      updateCacheFileWithPromise(workspacePath, {
-        name: user.name,
-        email: user.email,
-        files: [file],
-      });
+    commit = logResult[0];
+  } catch (e) {
+    if (
+      !(e as any)
+        .toString()
+        .startsWith(
+          "Error: fatal: your current branch 'master' does not have any commits yet",
+        )
+    ) {
+      output.appendLine(`get log failed.\n${(e as any).toString()}`);
     }
   }
+
+  if (commit === undefined) {
+    return true;
+  }
+
+  if (!workspacePathToRTFREADMECacheDict[workspacePosixPath]) {
+    workspacePathToRTFREADMECacheDict[workspacePosixPath] = {
+      files: [
+        {
+          path: relativePath,
+          filesPatterns,
+          commit,
+        },
+      ],
+      users: [],
+    };
+  } else {
+    let readmeInfoIndex = _.findIndex(
+      workspacePathToRTFREADMECacheDict[workspacePosixPath].files,
+      {
+        path: relativePath,
+      },
+    );
+
+    if (readmeInfoIndex === -1) {
+      workspacePathToRTFREADMECacheDict[workspacePosixPath].files.push({
+        path: relativePath,
+        filesPatterns,
+        commit,
+      });
+    } else {
+      workspacePathToRTFREADMECacheDict[workspacePosixPath].files[
+        readmeInfoIndex
+      ] = {
+        path: relativePath,
+        filesPatterns,
+        commit,
+      };
+    }
+  }
+
+  return true;
 }
 
-function deleteREADMEFile(absolutePath: string): void {
-  let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
-    workspaceFolder => absolutePath.startsWith(workspaceFolder.uri.path),
-  );
+async function readREADMEFile(
+  absolutePath: string,
+  workspacePosixPath: string,
+): Promise<void> {
+  let simpleGitObject = workspacePathToGitDict[workspacePosixPath];
 
-  if (workspaceFolders) {
-    for (let workspaceFolder of workspaceFolders) {
-      let workspacePath = workspaceFolder.uri.path;
+  if (!simpleGitObject) {
+    return;
+  }
 
-      let readmes = workspacePathToRTFREADMECacheDict[workspacePath].files;
+  let username = (await simpleGitObject.getConfig('user.name')).value;
+  let email = (await simpleGitObject.getConfig('user.email')).value;
 
-      if (readmes) {
-        workspacePathToRTFREADMECacheDict[workspacePath].files = readmes.filter(
-          readme =>
-            readme.path !== Path.posix.relative(workspacePath, absolutePath),
-        );
-      } else {
-        output.appendLine(
-          'Deleting a README file which is not inspected by PleaseREADME.',
-        );
-      }
-    }
+  if (!username || !email) {
+    return;
+  }
+
+  let relativePath = Path.posix.relative(workspacePosixPath, absolutePath);
+
+  let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+
+  if (!cache) {
+    cache = {
+      files: [],
+      users: [],
+    };
+
+    workspacePathToRTFREADMECacheDict[workspacePosixPath] = cache;
+  }
+
+  let readme = _.find(cache.files, {path: relativePath});
+
+  if (!readme || !readme.commit) {
+    return;
+  }
+
+  let user = _.find(cache.users, {name: username, email});
+
+  if (!user) {
+    user = {
+      name: username,
+      email,
+      files: [],
+    };
+
+    cache.users.push(user);
+  }
+
+  let file = _.find(user.files, {path: relativePath});
+
+  if (!file) {
+    file = {path: relativePath, commit: readme.commit};
+
+    user.files.push(file);
+  } else if (file.commit !== readme.commit) {
+    file.commit = readme.commit;
+  }
+
+  updateCacheFileWithPromise(workspacePosixPath, {
+    name: user.name,
+    email: user.email,
+    files: [file],
+  });
+}
+
+function deleteREADMEFile(
+  absolutePath: string,
+  workspacePosixPath: string,
+): void {
+  let readmes = workspacePathToRTFREADMECacheDict[workspacePosixPath].files;
+
+  if (readmes) {
+    workspacePathToRTFREADMECacheDict[workspacePosixPath].files =
+      readmes.filter(
+        readme =>
+          readme.path !== Path.posix.relative(workspacePosixPath, absolutePath),
+      );
   } else {
-    output.appendLine('No workspace when deleting README file saved in RAM.');
+    output.appendLine(
+      'Deleting a README file which is not inspected by PleaseREADME.',
+    );
   }
 }
 
@@ -269,7 +243,7 @@ async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
       let config = (workspacePathToConfigDict[workspacePath] =
         (JSON.parse(
           (await vscode.workspace.fs.readFile(uri)).toString(),
-        ) as Config) || {});
+        ) as TransformedConfig) || {});
 
       let response = await fetch(getServeUrl(config));
 
@@ -298,6 +272,7 @@ async function loadConfigAndGetCacheFiles(): Promise<void> {
 }
 
 async function walkThroughFilesToLoadREADME(
+  workspacePosixPath: string,
   path: string,
   fileType?: vscode.FileType,
 ): Promise<void> {
@@ -315,20 +290,32 @@ async function walkThroughFilesToLoadREADME(
     }
   }
 
+  let config = workspacePathToConfigDict[workspacePosixPath];
+
   if (
     fileType === vscode.FileType.File ||
     fileType === vscode.FileType.SymbolicLink
   ) {
-    if (README_FILE_NAMES.includes(Path.posix.basename(path))) {
-      loadREADMEFilePromises.push(loadREADMEFile(path));
+    if (
+      globMatch(
+        path,
+        workspacePosixPath,
+        config.readme || [],
+        config.ignore || [],
+      )
+    ) {
+      loadREADMEFilePromises.push(loadREADMEFile(path, workspacePosixPath));
     }
-  } else {
-    for (let [filePath, newFileType] of await vscode.workspace.fs.readDirectory(
+  } else if (fileType === vscode.FileType.Directory) {
+    for (let [fileName, newFileType] of await vscode.workspace.fs.readDirectory(
       vscode.Uri.from({scheme: 'file', path}),
     )) {
-      if (!filePath.endsWith('node_modules') && !filePath.endsWith('.git')) {
+      let filePath = Path.posix.resolve(path, fileName);
+
+      if (!globMatch(filePath, workspacePosixPath, config.ignore || [], [])) {
         await walkThroughFilesToLoadREADME(
-          Path.posix.resolve(path, filePath),
+          workspacePosixPath,
+          filePath,
           newFileType,
         );
       }
@@ -340,7 +327,10 @@ async function loadFiles(): Promise<void> {
   await loadConfigAndGetCacheFiles();
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
-    await walkThroughFilesToLoadREADME(workspaceFolder.uri.path);
+    await walkThroughFilesToLoadREADME(
+      workspaceFolder.uri.path,
+      workspaceFolder.uri.path,
+    );
   }
 }
 
@@ -435,23 +425,21 @@ function updateCacheFileWithPromise(
     .then(() => updateCacheFile(workspacePath, userInfo))
     .then(
       () => {},
-      err => err,
-    )
-    .then(err => err && output.appendLine(err.toString()));
+      err => err && output.appendLine(err.toString()),
+    );
 }
 
 async function hintIfNotRead(absolutePath: string): Promise<void> {
-  if (
-    absolutePath.indexOf('node_modules') !== -1 ||
-    absolutePath.indexOf('.git') !== -1
-  ) {
-    return;
-  }
-
-  for (let [workspacePath, config] of Object.entries(
+  for (let [workspacePath, cache] of Object.entries(
     workspacePathToRTFREADMECacheDict,
   )) {
     if (!absolutePath.startsWith(workspacePath)) {
+      continue;
+    }
+
+    let config = workspacePathToConfigDict[workspacePath];
+
+    if (globMatch(absolutePath, workspacePath, config.ignore || [], [])) {
       continue;
     }
 
@@ -463,24 +451,19 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
     let username: string | null | undefined, email: string | null | undefined;
 
-    for (let readme of config.files) {
+    for (let readme of cache.files) {
       if (readme.filesPatterns.length === 0) {
         continue;
       }
 
-      let matched: boolean = false;
       let readmeAbsolutePath = Path.posix.join(workspacePath, readme.path);
-      let readmeDirPath = Path.posix.dirname(readmeAbsolutePath);
 
-      for (let filesPattern of readme.filesPatterns) {
-        if (
-          minimatch(absolutePath, Path.posix.join(readmeDirPath, filesPattern))
-        ) {
-          matched = true;
-
-          break;
-        }
-      }
+      let matched = globMatch(
+        absolutePath,
+        Path.posix.dirname(readmeAbsolutePath),
+        readme.filesPatterns,
+        config.ignore || [],
+      );
 
       if (!matched) {
         continue;
@@ -495,7 +478,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         break;
       }
 
-      let user = _.find(config.users, {name: username, email});
+      let user = _.find(cache.users, {name: username, email});
 
       if (!user) {
         user = {
@@ -504,7 +487,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
           files: [],
         };
 
-        config.users.push(user);
+        cache.users.push(user);
 
         updateCacheFileWithPromise(workspacePath, user);
       }
@@ -604,32 +587,50 @@ async function handleSpecialFilesAndConditionalHint(
   eventType: vscode.FileChangeType | FileOpenType.Opened,
 ): Promise<void> {
   let filePath = uri.path;
-  let fileName = Path.posix.basename(filePath);
-
-  if (README_FILE_NAMES.includes(fileName)) {
-    switch (eventType) {
-      case vscode.FileChangeType.Changed:
-      case vscode.FileChangeType.Created:
-      case FileOpenType.Opened:
-        if (await loadREADMEFile(filePath)) {
-          await readREADMEFile(filePath);
-        }
-
-        break;
-
-      case vscode.FileChangeType.Deleted:
-        deleteREADMEFile(filePath);
-
-        break;
-
-      default:
-        output.appendLine('Unexpected event type!');
-
-        break;
-    }
-  }
 
   await hintIfNotRead(filePath);
+
+  let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
+    workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
+  );
+
+  if (workspaceFolders) {
+    for (let workspaceFolder of workspaceFolders) {
+      let workspacePosixPath = workspaceFolder.uri.path;
+
+      let config = workspacePathToConfigDict[workspacePosixPath];
+
+      if (
+        globMatch(
+          filePath,
+          workspacePosixPath,
+          config.readme || [],
+          config.ignore || [],
+        )
+      ) {
+        switch (eventType) {
+          case vscode.FileChangeType.Changed:
+          case vscode.FileChangeType.Created:
+          case FileOpenType.Opened:
+            if (await loadREADMEFile(filePath, workspacePosixPath)) {
+              await readREADMEFile(filePath, workspacePosixPath);
+            }
+
+            break;
+
+          case vscode.FileChangeType.Deleted:
+            deleteREADMEFile(filePath, workspacePosixPath);
+
+            break;
+
+          default:
+            output.appendLine('Unexpected event type!');
+
+            break;
+        }
+      }
+    }
+  }
 }
 
 export async function activate(
@@ -718,10 +719,28 @@ export async function activate(
     vscode.window.onDidChangeActiveTextEditor(async e => {
       if (e) {
         let filePath = e.document.uri.path;
-        let fileName = Path.posix.basename(filePath);
 
-        if (README_FILE_NAMES.includes(fileName)) {
-          await readREADMEFile(filePath);
+        let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
+          workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
+        );
+
+        if (workspaceFolders) {
+          for (let workspaceFolder of workspaceFolders) {
+            let workspacePosixPath = workspaceFolder.uri.path;
+
+            let config = workspacePathToConfigDict[workspacePosixPath];
+
+            if (
+              globMatch(
+                filePath,
+                workspacePosixPath,
+                config.readme || [],
+                config.ignore || [],
+              )
+            ) {
+              await readREADMEFile(filePath, workspacePosixPath);
+            }
+          }
         }
 
         await hintIfNotRead(filePath);

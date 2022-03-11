@@ -1,4 +1,0 @@
-*
-!/src/extension/**/*.ts
-!/bld/extension/**
-*.tsbuildinfo

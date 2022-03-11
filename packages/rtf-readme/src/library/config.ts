@@ -4,9 +4,44 @@ import * as Path from 'path';
 export const CONFIG_FILENAME = '.rtfrrc';
 
 export interface Config {
-  init: string;
+  init?: string;
   server: string;
   token: string;
+  ignore?: string | string[];
+  readme?: string | string[];
+}
+
+export interface TransformedConfig {
+  init?: string;
+  server: string;
+  token: string;
+  ignore?: string[];
+  readme?: string[];
+}
+
+export const DEFAULT_READMES_TO_BE_CONSIDERED = ['**/README.md'];
+
+export async function readConfigFile(path: string): Promise<TransformedConfig> {
+  let config = JSON.parse(
+    (await FS.promises.readFile(path)).toString(),
+  ) as Config;
+
+  return {
+    init: config.init,
+    server: config.server,
+    token: config.token,
+    ignore:
+      Array.isArray(config.ignore) || typeof config.ignore !== 'string'
+        ? config.ignore
+        : [config.ignore],
+    readme: Array.isArray(config.readme)
+      ? config.readme.length === 0
+        ? DEFAULT_READMES_TO_BE_CONSIDERED
+        : config.readme
+      : config.readme
+      ? [config.readme]
+      : undefined,
+  };
 }
 
 export async function writeToConfigFile(
@@ -20,5 +55,7 @@ export async function writeToConfigFile(
 }
 
 export function getServeUrl(config: Config): string {
-  return `http://${config.server}/cache/${config.token}`;
+  let slash = config.server.endsWith('/') ? '' : '/';
+
+  return `${config.server}${slash}cache/${config.token}`;
 }

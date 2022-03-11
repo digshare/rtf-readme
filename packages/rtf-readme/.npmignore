@@ -4,3 +4,4 @@
 !/src/cli/**/*.ts
 !/bld/cli/**
 *.tsbuildinfo
+yarn-error.log

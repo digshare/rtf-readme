@@ -5,7 +5,6 @@ import * as Path from 'path';
 import chalk from 'chalk';
 import {Command, command, metadata} from 'clime';
 import * as _ from 'lodash';
-import minimatch from 'minimatch';
 import fetch from 'node-fetch';
 import simpleGit, {SimpleGit} from 'simple-git';
 import table from 'text-table';
@@ -13,13 +12,14 @@ import table from 'text-table';
 import {
   CONFIG_FILENAME,
   Cache,
-  Config,
   MAGIC_GIT_INITIAL_COMMIT,
-  README_FILE_NAMES,
+  TransformedConfig,
   getFilesPatternsOfREADME,
   getServeUrl,
+  globMatch,
   pathToPosixPath,
   posixPathToPath,
+  readConfigFile,
 } from '../../library';
 import {READMECliOptions} from '../@options';
 
@@ -36,10 +36,10 @@ export default class extends Command {
       : process.cwd();
 
     let configFilePath = Path.join(workspacePath, CONFIG_FILENAME);
-    let config: Config;
+    let config: TransformedConfig;
 
     try {
-      config = JSON.parse(FS.readFileSync(configFilePath).toString());
+      config = await readConfigFile(configFilePath);
     } catch (e) {
       console.error('read config failed');
 
@@ -60,13 +60,18 @@ export default class extends Command {
 
     let simpleGitObject = simpleGit(workspacePath);
 
-    let readmePaths = walkThroughFilesToGetREADME(workspacePath);
+    let workspacePosixPath = pathToPosixPath(workspacePath);
+
+    let readmePaths = walkThroughFilesToGetREADME(
+      workspacePath,
+      workspacePosixPath,
+      config.readme || [],
+      config.ignore || [],
+    );
 
     if (!readmePaths || readmePaths.length === 0) {
       return;
     }
-
-    let workspacePosixPath = pathToPosixPath(workspacePath);
 
     let readmeFilesPatterns: {
       readmePosixRelativePath: string;
@@ -127,121 +132,118 @@ export default class extends Command {
 
       for (let commitFile of commitFiles) {
         for (let readmeFilesPattern of readmeFilesPatterns) {
-          let readmeDirPath = Path.posix.dirname(
-            Path.posix.join(
-              workspacePosixPath,
-              readmeFilesPattern.readmePosixRelativePath,
-            ),
+          let readmePosixPath = Path.posix.join(
+            workspacePosixPath,
+            readmeFilesPattern.readmePosixRelativePath,
           );
 
-          for (let filesPattern of readmeFilesPattern.filesPatterns) {
-            let readmePosixRelativePath =
-              readmeFilesPattern.readmePosixRelativePath;
-            let md5String = getMD5OfCertainFileInGitAndREADME(
-              user,
-              readmePosixRelativePath,
-            );
-            let result = md5ToReportedFilesMap.get(md5String);
+          let readmePosixRelativePath =
+            readmeFilesPattern.readmePosixRelativePath;
 
-            if (
-              _.find(result, {
-                user,
-                readmePath: readmePosixRelativePath,
-              })
-            ) {
-              continue;
+          let md5String = getMD5OfCertainFileInGitAndREADME(
+            user,
+            readmePosixRelativePath,
+          );
+          let result = md5ToReportedFilesMap.get(md5String);
+
+          if (
+            _.find(result, {
+              user,
+              readmePath: readmePosixRelativePath,
+            })
+          ) {
+            continue;
+          }
+
+          if (
+            globMatch(
+              Path.posix.join(workspacePosixPath, commitFile),
+              Path.posix.dirname(readmePosixPath),
+              readmeFilesPattern.filesPatterns,
+              config.ignore || [],
+            )
+          ) {
+            let latestCommitRead = cache.users
+              ?.find(
+                userToMatch =>
+                  user.name === userToMatch.name &&
+                  user.email === userToMatch.email,
+              )
+              ?.files?.find(
+                file => file.path === readmePosixRelativePath,
+              )?.commit;
+
+            let readmeCommitsByThisUser = _.compact(
+              (
+                await simpleGitObject.raw(
+                  'log',
+                  '-1',
+                  `--author=${user.name} <${user.email}>`,
+                  '--pretty=format:%H',
+                  readmePosixRelativePath,
+                )
+              ).split('\n'),
+            );
+
+            let readmeCommits =
+              latestCommitRead || readmeCommitsByThisUser[0]
+                ? _.compact(
+                    (
+                      await simpleGitObject.raw(
+                        'log',
+                        '-1',
+                        '--pretty=format:%H',
+                        readmePosixRelativePath,
+                      )
+                    ).split('\n'),
+                  )
+                : undefined;
+
+            let latestCommitReadToReadmeNowCommitCount = 1;
+
+            if (latestCommitRead) {
+              latestCommitReadToReadmeNowCommitCount = Number(
+                await simpleGitObject.raw(
+                  'rev-list',
+                  `${latestCommitRead}..${readmeCommits![0]}`,
+                  '--count',
+                ),
+              );
+            }
+
+            let readmeCommitToReadmeNowCommitCount = 1;
+
+            if (readmeCommitsByThisUser[0]) {
+              readmeCommitToReadmeNowCommitCount = Number(
+                await simpleGitObject.raw(
+                  'rev-list',
+                  `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
+                  '--count',
+                ),
+              );
             }
 
             if (
-              minimatch(
-                Path.posix.join(workspacePosixPath, commitFile),
-                Path.posix.join(readmeDirPath, filesPattern),
-              )
+              latestCommitReadToReadmeNowCommitCount > 0 &&
+              readmeCommitToReadmeNowCommitCount > 0
             ) {
-              let latestCommitRead = cache.users
-                ?.find(
-                  userToMatch =>
-                    user.name === userToMatch.name &&
-                    user.email === userToMatch.email,
-                )
-                ?.files?.find(
-                  file => file.path === readmePosixRelativePath,
-                )?.commit;
+              hasReported = true;
 
-              let readmeCommitsByThisUser = _.compact(
-                (
-                  await simpleGitObject.raw(
-                    'log',
-                    '-1',
-                    `--author=${user.name} <${user.email}>`,
-                    '--pretty=format:%H',
-                    readmePosixRelativePath,
-                  )
-                ).split('\n'),
-              );
+              reportError(user, readmePosixRelativePath);
 
-              let readmeCommits =
-                latestCommitRead || readmeCommitsByThisUser[0]
-                  ? _.compact(
-                      (
-                        await simpleGitObject.raw(
-                          'log',
-                          '-1',
-                          '--pretty=format:%H',
-                          readmePosixRelativePath,
-                        )
-                      ).split('\n'),
-                    )
-                  : undefined;
-
-              let latestCommitReadToReadmeNowCommitCount = 1;
-
-              if (latestCommitRead) {
-                latestCommitReadToReadmeNowCommitCount = Number(
-                  await simpleGitObject.raw(
-                    'rev-list',
-                    `${latestCommitRead}..${readmeCommits![0]}`,
-                    '--count',
-                  ),
-                );
-              }
-
-              let readmeCommitToReadmeNowCommitCount = 1;
-
-              if (readmeCommitsByThisUser[0]) {
-                readmeCommitToReadmeNowCommitCount = Number(
-                  await simpleGitObject.raw(
-                    'rev-list',
-                    `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
-                    '--count',
-                  ),
-                );
-              }
-
-              if (
-                latestCommitReadToReadmeNowCommitCount > 0 &&
-                readmeCommitToReadmeNowCommitCount > 0
-              ) {
-                hasReported = true;
-
-                reportError(user, readmePosixRelativePath);
-
-                if (result) {
-                  result.push({
+              if (result) {
+                result.push({
+                  user,
+                  readmePath: readmePosixRelativePath,
+                });
+              } else {
+                md5ToReportedFilesMap.set(md5String, [
+                  {
                     user,
                     readmePath: readmePosixRelativePath,
-                  });
-                } else {
-                  md5ToReportedFilesMap.set(md5String, [
-                    {
-                      user,
-                      readmePath: readmePosixRelativePath,
-                    },
-                  ]);
-                }
+                  },
+                ]);
               }
-
-              break;
             }
           }
         }
@@ -280,12 +282,17 @@ export default class extends Command {
   }
 }
 
-function walkThroughFilesToGetREADME(path: string): string[] | undefined {
+function walkThroughFilesToGetREADME(
+  path: string,
+  workspacePosixPath: string,
+  readmePatterns: string[],
+  ignorePatterns: string[],
+): string[] | undefined {
   try {
     let stat = FS.statSync(path);
 
     if (stat.isFile()) {
-      if (README_FILE_NAMES.includes(Path.basename(path))) {
+      if (globMatch(path, workspacePosixPath, readmePatterns, ignorePatterns)) {
         return [path];
       } else {
         return undefined;
@@ -293,14 +300,26 @@ function walkThroughFilesToGetREADME(path: string): string[] | undefined {
     } else {
       let readmePaths: string[] = [];
 
-      for (let file of FS.readdirSync(path)) {
-        if (file === '.git' || file === 'node_modules') {
+      for (let fileName of FS.readdirSync(path)) {
+        if (
+          globMatch(
+            Path.posix.join(pathToPosixPath(path), fileName),
+            workspacePosixPath,
+            ignorePatterns,
+            [],
+          )
+        ) {
           continue;
         }
 
         readmePaths = _.concat(
           readmePaths,
-          walkThroughFilesToGetREADME(Path.join(path, file)) || [],
+          walkThroughFilesToGetREADME(
+            Path.join(path, fileName),
+            workspacePosixPath,
+            readmePatterns,
+            ignorePatterns,
+          ) || [],
         );
       }
 

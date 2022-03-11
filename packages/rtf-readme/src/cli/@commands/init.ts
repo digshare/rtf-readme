@@ -5,7 +5,11 @@ import {Command, command, metadata, option} from 'clime';
 import inquirer, {DistinctQuestion} from 'inquirer';
 import * as _ from 'lodash';
 
-import {Config, writeToConfigFile} from '../../library';
+import {
+  Config,
+  DEFAULT_READMES_TO_BE_CONSIDERED,
+  writeToConfigFile,
+} from '../../library';
 import {READMECliOptions} from '../@options';
 
 export class InitOptions extends READMECliOptions {
@@ -16,7 +20,8 @@ export class InitOptions extends READMECliOptions {
   init!: string;
   @option({
     flag: 's',
-    description: 'The certralizing server. Example: 199.199.199.199:8000',
+    description:
+      'The certralizing server. Format: http(s)://xxx.xxx.xxx.xxx:dddd',
   })
   server!: string;
   @option({
@@ -29,13 +34,15 @@ export class InitOptions extends READMECliOptions {
 const promptList = [
   {
     type: 'input',
-    message: 'Please input the commit hash which rtfr starts from:',
+    message:
+      'Please input the commit hash which rtfr starts from (empty if not needed):',
     name: 'init',
     validate: commitInputValidate,
   },
   {
     type: 'input',
-    message: 'Please input server config(example: 199.199.199.199:8000):',
+    message:
+      'Please input server config(format: http(s)://xxx.xxx.xxx.xxx:dddd):',
     name: 'server',
     validate: serverConfigValidate,
   },
@@ -73,9 +80,11 @@ export default class extends Command {
       : process.cwd();
 
     let config: Config = {
-      init: options.init,
+      init: options.init === '' ? undefined : options.init,
       server: options.server,
       token: options.token,
+      ignore: ['.git', '**/node_modules/**', '**/node_modules/**/.*'],
+      readme: DEFAULT_READMES_TO_BE_CONSIDERED,
     };
 
     await writeToConfigFile(workspacePath, config);
@@ -83,6 +92,10 @@ export default class extends Command {
 }
 
 function commitInputValidate(val: string): string | boolean {
+  if (val === '') {
+    return true;
+  }
+
   if (val && val.match(/^[0-9a-zA-Z]{40}$/)) {
     return true;
   }
@@ -91,13 +104,19 @@ function commitInputValidate(val: string): string | boolean {
 }
 
 function serverConfigValidate(val: string): string | boolean {
-  let errorString = 'The format is "ip:port", in which ip is ipv4.';
+  let errorString = 'The format is "http(s)://ip:port", in which ip is ipv4.';
 
   if (!val) {
     return errorString;
   }
 
-  let [ip, port] = val.trim().split(':');
+  let [protocol, ipAndPort] = val.trim().split('://');
+
+  if (protocol !== 'http' && protocol !== 'https') {
+    return errorString;
+  }
+
+  let [ip, port] = ipAndPort.split(':');
 
   if (Net.isIPv4(ip) && port.match(/^\d{1,5}$/) && Number(port) <= 65535) {
     return true;

@@ -1,11 +1,39 @@
 {
   "name": "rtfr-serve",
-  "version": "0.0.0",
+  "version": "0.3.0",
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "README"
+  ],
+  "repository": "https://github.com/digshare/rtf-readme.git",
+  "bin": {
+    "rtfr-serve": "bld/cli/main.js"
+  },
   "main": "bld/library/index.js",
   "types": "bld/library/index.d.ts",
+  "files": [
+    "bld"
+  ],
   "dependencies": {
+    "clime": "^0.5.14",
+    "fp-ts": "^2.11.8",
+    "io-ts": "^2.2.16",
+    "koa": "^2.13.4",
+    "koa-bodyparser": "^4.3.0",
+    "koa-router": "^10.1.1",
+    "level": "^7.0.1",
+    "lodash": "^4.17.21",
+    "nanoid": "^3.3.1",
     "tslib": "^2.3.1"
+  },
+  "devDependencies": {
+    "@types/koa": "^2.13.4",
+    "@types/koa-bodyparser": "^4.3.6",
+    "@types/koa-router": "^7.4.4",
+    "@types/level": "^6.0.0"
   }
 }

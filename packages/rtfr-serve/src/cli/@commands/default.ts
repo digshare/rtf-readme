@@ -10,8 +10,7 @@ import Router from 'koa-router';
 import _ from 'lodash';
 
 import {Cache, RawUserInfo, UserInfo, getDBObject} from '../../library';
-
-import {newDBRecordAndGetToken} from './@utils';
+import {newDBRecordAndGetToken} from '../@utils';
 
 const COOKIE_KEYS = ['rtf-readme-17', 'rtfr-serve'];
 
@@ -43,7 +42,7 @@ export class ServeOptions extends Options {
 }
 
 @command({
-  description: 'Run a server for centralizing rtf-README config',
+  description: 'Run a server for centralizing rtf-README cache',
 })
 export default class extends Command {
   @metadata
@@ -191,6 +190,20 @@ export default class extends Command {
       }
 
       await db.put(rawUserInfoString, JSON.stringify(files));
+
+      ctx.body = 'ok';
+    });
+
+    router.delete('/token/:token', async ctx => {
+      let token = ctx.params.token;
+
+      let users = JSON.parse(await db.get(token));
+
+      await db.del(token);
+
+      for (let user of users) {
+        await db.del(userToString(user));
+      }
 
       ctx.body = 'ok';
     });

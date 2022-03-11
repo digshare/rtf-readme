@@ -251,6 +251,12 @@ async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
         ...JSON.parse(await response.text()),
         files: [],
       };
+
+      await walkThroughFilesToLoadREADME(workspacePath, workspacePath);
+
+      await Promise.all(loadREADMEFilePromises);
+
+      loadREADMEFilePromises = [];
     }
   } catch (e) {
     output.appendLine(
@@ -259,6 +265,12 @@ async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
       ).toString()}`,
     );
   }
+}
+
+function deleteConfigFile(workspacePath: string): void {
+  delete workspacePathToConfigDict[workspacePath];
+
+  delete workspacePathToRTFREADMECacheDict[workspacePath];
 }
 
 async function loadConfigAndGetCacheFiles(): Promise<void> {
@@ -325,13 +337,6 @@ async function walkThroughFilesToLoadREADME(
 
 async function loadFiles(): Promise<void> {
   await loadConfigAndGetCacheFiles();
-
-  for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
-    await walkThroughFilesToLoadREADME(
-      workspaceFolder.uri.path,
-      workspaceFolder.uri.path,
-    );
-  }
 }
 
 async function updateCacheFile(
@@ -439,6 +444,10 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
     let config = workspacePathToConfigDict[workspacePath];
 
+    if (!config) {
+      continue;
+    }
+
     if (globMatch(absolutePath, workspacePath, config.ignore || [], [])) {
       continue;
     }
@@ -541,43 +550,41 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      let result = await vscode.window.showInformationMessage(
-        `Please read the f***ing README "${
-          readme.path
-        }" for file: ${Path.posix.relative(workspacePath, absolutePath)}.`,
-        'Open',
-        'Read Later',
-      );
+      vscode.window
+        .showInformationMessage(
+          `Please read the f***ing README "${
+            readme.path
+          }" for file: ${Path.posix.relative(workspacePath, absolutePath)}.`,
+          'Open',
+          'Read Later',
+        )
+        .then((result): Thenable<vscode.TextEditor> | undefined => {
+          if (result === 'Open') {
+            let commit = _.find(user!.files, {path: readme.path})?.commit;
 
-      if (result === 'Open') {
-        let commit = _.find(user.files, {path: readme.path})?.commit;
+            if (!commit) {
+              return vscode.window.showTextDocument(
+                vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
+              );
+            } else {
+              return vscode.commands.executeCommand(
+                'vscode.diff',
+                vscode.Uri.from({
+                  scheme: 'readme',
+                  path: readmeAbsolutePath,
+                  query: JSON.stringify({commit}),
+                }),
+                vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
+              );
+            }
+          }
 
-        if (!commit) {
-          await vscode.window
-            .showTextDocument(
-              vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
-            )
-            .then(
-              () => {},
-              err => output.appendLine(err.toString()),
-            );
-        } else {
-          await vscode.commands
-            .executeCommand(
-              'vscode.diff',
-              vscode.Uri.from({
-                scheme: 'readme',
-                path: readmeAbsolutePath,
-                query: JSON.stringify({commit}),
-              }),
-              vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
-            )
-            .then(
-              () => {},
-              err => output.appendLine(err.toString()),
-            );
-        }
-      }
+          return;
+        })
+        .then(
+          () => {},
+          err => err && output.appendLine(err.toString()),
+        );
     }
   }
 }
@@ -587,8 +594,6 @@ async function handleSpecialFilesAndConditionalHint(
   eventType: vscode.FileChangeType | FileOpenType.Opened,
 ): Promise<void> {
   let filePath = uri.path;
-
-  await hintIfNotRead(filePath);
 
   let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
     workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
@@ -601,6 +606,31 @@ async function handleSpecialFilesAndConditionalHint(
       let config = workspacePathToConfigDict[workspacePosixPath];
 
       if (
+        Path.posix.dirname(filePath) === workspacePosixPath &&
+        Path.posix.basename(filePath) === CONFIG_FILENAME
+      ) {
+        switch (eventType) {
+          case vscode.FileChangeType.Changed:
+          case vscode.FileChangeType.Created:
+            await loadConfigAndGetCacheFile(workspacePosixPath);
+
+            break;
+
+          case vscode.FileChangeType.Deleted:
+            deleteConfigFile(workspacePosixPath);
+
+            break;
+
+          case FileOpenType.Opened:
+            break;
+
+          default:
+            output.appendLine('Unexpected event type!');
+
+            break;
+        }
+      } else if (
+        config &&
         globMatch(
           filePath,
           workspacePosixPath,
@@ -631,6 +661,8 @@ async function handleSpecialFilesAndConditionalHint(
       }
     }
   }
+
+  await hintIfNotRead(filePath);
 }
 
 export async function activate(
@@ -730,6 +762,10 @@ export async function activate(
 
             let config = workspacePathToConfigDict[workspacePosixPath];
 
+            if (!config) {
+              continue;
+            }
+
             if (
               globMatch(
                 filePath,
@@ -764,24 +800,25 @@ export async function activate(
 
   await loadFiles();
 
-  await Promise.all(loadREADMEFilePromises);
+  await Promise.all(
+    vscode.window.visibleTextEditors.map(async editor => {
+      let document = editor.document;
+      let absolutePath = pathToPosixPath(document.fileName);
 
-  for (let document of vscode.workspace.textDocuments) {
-    let absolutePath = pathToPosixPath(document.fileName);
+      if (absolutePath === Path.posix.basename(absolutePath)) {
+        return;
+      }
 
-    if (absolutePath === Path.posix.basename(absolutePath)) {
-      continue;
-    }
+      if (absolutePath.endsWith('.git')) {
+        return;
+      }
 
-    if (absolutePath.endsWith('.git')) {
-      continue;
-    }
-
-    await handleSpecialFilesAndConditionalHint(
-      vscode.Uri.from({scheme: 'file', path: absolutePath}),
-      FileOpenType.Opened,
-    );
-  }
+      await handleSpecialFilesAndConditionalHint(
+        vscode.Uri.from({scheme: 'file', path: absolutePath}),
+        FileOpenType.Opened,
+      );
+    }),
+  );
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     let disposable = fsp.watch(workspaceFolder.uri);

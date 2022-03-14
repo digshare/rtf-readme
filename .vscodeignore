@@ -15,3 +15,5 @@ node_modules
 tsconfig.tsbuildinfo
 packages/**
 .rtf-readme.json
+rtf-readme-db
+*.vsix

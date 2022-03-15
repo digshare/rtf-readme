@@ -49,7 +49,7 @@ export function globMatch(
 }
 
 function makeRe(pattern: string): RegExp {
-  return micromatch.makeRe(pattern);
+  return micromatch.makeRe(pattern, {dot: true});
 }
 
 function convertPatternsToRe(patterns: string[]): RegExp[] {

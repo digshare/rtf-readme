@@ -30,10 +30,11 @@ export async function readConfigFile(path: string): Promise<TransformedConfig> {
     init: config.init,
     server: config.server,
     token: config.token,
-    ignore:
-      Array.isArray(config.ignore) || typeof config.ignore !== 'string'
-        ? config.ignore
-        : [config.ignore],
+    ignore: Array.isArray(config.ignore)
+      ? ['.git/**', ...config.ignore]
+      : typeof config.ignore === 'string'
+      ? ['.git/**', config.ignore]
+      : undefined,
     readme: Array.isArray(config.readme)
       ? config.readme.length === 0
         ? DEFAULT_READMES_TO_BE_CONSIDERED

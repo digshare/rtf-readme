@@ -211,6 +211,8 @@ async function readREADMEFile(
     email: user.email,
     files: [file],
   });
+
+  output.appendLine(`README "${file.path}" read.`);
 }
 
 function deleteREADMEFile(

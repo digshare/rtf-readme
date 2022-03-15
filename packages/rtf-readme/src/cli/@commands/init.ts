@@ -6,7 +6,6 @@ import inquirer, {DistinctQuestion} from 'inquirer';
 import * as _ from 'lodash';
 
 import {
-  CONFIG_FILENAME,
   Config,
   DEFAULT_READMES_TO_BE_CONSIDERED,
   writeToConfigFile,
@@ -84,13 +83,7 @@ export default class extends Command {
       init: options.init === '' ? undefined : options.init,
       server: options.server,
       token: options.token,
-      ignore: [
-        CONFIG_FILENAME,
-        '.git/**',
-        '.git/**/.*',
-        '**/node_modules/**',
-        '**/node_modules/**/.*',
-      ],
+      ignore: ['**/node_modules/**'],
       readme: DEFAULT_READMES_TO_BE_CONSIDERED,
     };
 

@@ -109,3 +109,7 @@ None.
 #### 1. Computer becomes hot when using rtf-README extension.
 
 This could be the result of error "System limit for number of file watchers reached".
+
+#### 2. "FetchError: request to https://xxx.xxx.com failed, reason: certificate has expired"
+
+If you see this error, you can simply turn off "Http: System Certificates" in vscode "Settings" to solve this problem.

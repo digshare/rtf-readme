@@ -829,6 +829,110 @@ export async function activate(
 
     workspacePathToWatchDisposableDict[workspaceFolder.uri.path] = disposable;
   }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rtfr.showREADMEs', () => {
+      if (!vscode.window.activeTextEditor) {
+        output.appendLine("rtfr.showREADMEs: You haven't open files.");
+
+        return;
+      }
+
+      let filePath = vscode.window.activeTextEditor.document.fileName;
+
+      if (Path.posix.basename(filePath) === filePath) {
+        output.appendLine('rtfr.showREADMEs: Current Focused is not a file');
+
+        return;
+      }
+
+      let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
+        workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
+      );
+
+      let readmeFilePathsSplitByWorkspace: string[][] = [];
+
+      if (workspaceFolders) {
+        for (let workspaceFolder of workspaceFolders) {
+          let workspacePosixPath = workspaceFolder.uri.path;
+          let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+          let config = workspacePathToConfigDict[workspacePosixPath];
+
+          let readmeFilePaths: string[] = [workspacePosixPath];
+
+          for (let readme of cache.files) {
+            if (
+              globMatch(
+                filePath,
+                Path.posix.dirname(
+                  Path.posix.join(workspacePosixPath, readme.path),
+                ),
+                readme.filesPatterns,
+                config.ignore || [],
+              )
+            ) {
+              readmeFilePaths.push(readme.path);
+            }
+          }
+
+          readmeFilePathsSplitByWorkspace.push(readmeFilePaths);
+        }
+      }
+
+      readmeFilePathsSplitByWorkspace = readmeFilePathsSplitByWorkspace.filter(
+        readmeFilePaths => readmeFilePaths.length > 1,
+      );
+
+      vscode.window
+        .showQuickPick(
+          _.flatten(
+            readmeFilePathsSplitByWorkspace.map(readmeFilePaths => {
+              return [
+                {
+                  label: readmeFilePaths[0],
+                  kind: vscode.QuickPickItemKind.Separator,
+                },
+                ...readmeFilePaths.slice(1).map(readmeFilePath => ({
+                  label: Path.posix.basename(readmeFilePath),
+                  description:
+                    Path.posix.dirname(readmeFilePath) === '.'
+                      ? undefined
+                      : Path.posix.dirname(readmeFilePath),
+                  workspacePosixPath: readmeFilePaths[0],
+                })),
+              ] as (vscode.QuickPickItem & {workspacePosixPath: string})[];
+            }),
+          ),
+          {
+            placeHolder:
+              readmeFilePathsSplitByWorkspace.length > 0
+                ? 'Search README files by name'
+                : 'No README files associated with this file',
+          },
+        )
+        .then(item => {
+          if (!item) {
+            return;
+          }
+
+          return vscode.window.showTextDocument(
+            vscode.Uri.file(
+              item.description
+                ? Path.posix.join(
+                    item.workspacePosixPath!,
+                    item.description,
+                    item.label,
+                  )
+                : Path.posix.join(item.workspacePosixPath!, item.label),
+            ),
+          );
+        })
+        .then(
+          () => {},
+          err => err && output.appendLine(err.toString()),
+        );
+    }),
+  );
 }
 
 export function deactivate(): void {}

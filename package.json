@@ -24,9 +24,17 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onFileSystem:readme"
+    "onFileSystem:readme",
+    "onCommand:rtfr.showREADMEs"
   ],
-  "contributes": {},
+  "contributes": {
+    "commands": [
+      {
+        "command": "rtfr.showREADMEs",
+        "title": "Show READMEs Relavant To This File"
+      }
+    ]
+  },
   "private": true,
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "scripts": {

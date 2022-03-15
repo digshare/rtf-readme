@@ -14,6 +14,13 @@ export function globMatch(
       pattern.startsWith('!') ? pattern.slice(1) : `!${pattern}`,
     ),
   );
+  patterns = patterns.map(pattern =>
+    pattern.startsWith('/')
+      ? pattern.slice(1)
+      : pattern.startsWith('!/')
+      ? `!${pattern.slice(2)}`
+      : pattern,
+  );
 
   let tasks = fg.generateTasks(patterns);
 

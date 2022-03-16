@@ -13,8 +13,10 @@ import {
   CONFIG_FILENAME,
   Cache,
   MAGIC_GIT_INITIAL_COMMIT,
+  README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
   getFilesPatternsOfREADME,
+  getGitUserInfo,
   getServeUrl,
   globMatch,
   pathToPosixPath,
@@ -76,16 +78,28 @@ export default class extends Command {
     let readmeFilesPatterns: {
       readmePosixRelativePath: string;
       filesPatterns: string[];
+      commits: string[];
     }[] = [];
 
     for (let readmePath of readmePaths) {
       let readmeContent = (await FS.promises.readFile(readmePath)).toString();
+      let readmePosixRelativePath = pathToPosixPath(
+        Path.relative(workspacePath, readmePath),
+      );
 
       readmeFilesPatterns.push({
-        readmePosixRelativePath: pathToPosixPath(
-          Path.relative(workspacePath, readmePath),
-        ),
+        readmePosixRelativePath,
         filesPatterns: getFilesPatternsOfREADME(readmeContent),
+        commits: _.compact(
+          (
+            await simpleGitObject.raw(
+              'log',
+              `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
+              '--pretty=format:%H',
+              readmePosixRelativePath,
+            )
+          ).split('\n'),
+        ),
       });
     }
 
@@ -122,7 +136,7 @@ export default class extends Command {
     for (let i = 0; i < commitHashs.length; ++i) {
       let commitHash = commitHashs[i];
 
-      let user = await getUserByCommit(simpleGitObject, commitHash);
+      let user = await getGitUserInfo(simpleGitObject, commitHash);
 
       let commitFiles = await getCommitFiles(
         simpleGitObject,
@@ -163,15 +177,27 @@ export default class extends Command {
               config.ignore || [],
             )
           ) {
-            let latestCommitRead = cache.users
+            let commits = readmeFilesPattern.commits; // TODO (ooyyloo): speed optimization
+
+            let latestCommitsRead = cache.users
               ?.find(
                 userToMatch =>
                   user.name === userToMatch.name &&
                   user.email === userToMatch.email,
               )
-              ?.files?.find(
-                file => file.path === readmePosixRelativePath,
-              )?.commit;
+              ?.files?.filter(
+                file =>
+                  file.path === readmePosixRelativePath &&
+                  commits.findIndex(commit => file.commit === commit) !== -1,
+              )
+              .map(file => file.commit);
+
+            latestCommitsRead?.sort(
+              (a, b) =>
+                commits.findIndex(commit => commit === a) -
+                commits.findIndex(commit => commit === b),
+            );
+            let latestCommitRead = latestCommitsRead?.[0];
 
             let readmeCommitsByThisUser = _.compact(
               (
@@ -266,6 +292,17 @@ export default class extends Command {
 
               readmeFilesPatterns[readmeIndex].filesPatterns =
                 getFilesPatternsOfREADME(readmeContent);
+
+              readmeFilesPatterns[readmeIndex].commits = _.compact(
+                (
+                  await simpleGitObject.raw(
+                    'log',
+                    `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
+                    '--pretty=format:%H',
+                    readmeFilesPatterns[readmeIndex].readmePosixRelativePath,
+                  )
+                ).split('\n'),
+              );
             } catch (e) {
               readmeFilesPatterns.splice(readmeIndex, 1);
             }
@@ -330,28 +367,6 @@ function walkThroughFilesToGetREADME(
 
     return undefined;
   }
-}
-
-async function getUserByCommit(
-  simpleGitObject: SimpleGit,
-  commitHash: string,
-): Promise<{name: string; email: string}> {
-  let usersRegExp = /(?:([^]+?)\s(<\S+\@\S+>))/;
-
-  let userString = await simpleGitObject.raw(
-    '--no-pager',
-    'show',
-    '-s',
-    '--format=%an <%ae>',
-    commitHash,
-  );
-
-  let userInfo = userString.match(usersRegExp);
-
-  let username = userInfo![1];
-  let email = userInfo![2].match(/<([^]+)>/)![1];
-
-  return {name: username, email};
 }
 
 async function getCommitFiles(

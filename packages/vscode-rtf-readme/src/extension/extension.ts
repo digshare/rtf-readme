@@ -5,9 +5,11 @@ import fetch from 'node-fetch';
 import {
   CONFIG_FILENAME,
   READMEInfo,
+  README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
   UserInfo,
   getFilesPatternsOfREADME,
+  getGitUserInfo,
   getServeUrl,
   getSimpleGitObject,
   globMatch,
@@ -158,8 +160,7 @@ async function readREADMEFile(
     return;
   }
 
-  let username = (await simpleGitObject.getConfig('user.name')).value;
-  let email = (await simpleGitObject.getConfig('user.email')).value;
+  let {name: username, email} = await getGitUserInfo(simpleGitObject);
 
   if (!username || !email) {
     return;
@@ -483,8 +484,10 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       }
 
       if (username === undefined && email === undefined) {
-        username = (await simpleGitObject.raw('config', 'user.name')).trim();
-        email = (await simpleGitObject.raw('config', 'user.email')).trim();
+        let userGitInfo = await getGitUserInfo(simpleGitObject);
+
+        username = userGitInfo.name;
+        email = userGitInfo.email;
       }
 
       if (!username || !email) {
@@ -512,7 +515,27 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      file = _.cloneDeep(_.find(user.files, {path: readme.path}));
+      let commits = _.compact(
+        (
+          await simpleGitObject.raw(
+            'log',
+            `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
+            '--pretty=format:%H',
+            readme.path,
+          )
+        ).split('\n'),
+      ); // TODO: speed up by preprocessing
+      let files = user.files.filter(
+        file => commits.findIndex(commit => file.commit === commit) !== -1,
+      );
+      files.sort((a, b) => {
+        return (
+          commits.findIndex(commit => commit === a.commit) -
+          commits.findIndex(commit => commit === b.commit)
+        );
+      });
+
+      file = files[0] ? _.cloneDeep(files[0]) : undefined;
 
       try {
         let readmeCommitsByThisUser = _.compact(
@@ -564,7 +587,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         )
         .then((result): Thenable<vscode.TextEditor> | undefined => {
           if (result === 'Open') {
-            let commit = _.find(user!.files, {path: readme.path})?.commit;
+            let commit = file?.commit;
 
             if (!commit) {
               return vscode.window.showTextDocument(
@@ -945,6 +968,11 @@ export async function activate(
           _token,
         ): vscode.ProviderResult<vscode.CodeLens[]> => {
           let filePath = document.fileName;
+
+          if (filePath === Path.basename(filePath)) {
+            return;
+          }
+
           let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
             workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
           );

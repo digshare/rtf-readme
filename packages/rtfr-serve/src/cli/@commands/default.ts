@@ -141,12 +141,25 @@ export default class extends Command {
           userInfo.files.concat(files),
           _.isEqual,
         );
-        let uniqFiles = _.uniqBy(concatAndUniqFiles, 'path');
+        let newFilesGroupByPath = _.groupBy(concatAndUniqFiles, 'path');
+        let newFiles: {path: string; commit: string}[] = [];
 
-        if (concatAndUniqFiles.length > uniqFiles.length) {
+        for (let [, files] of Object.entries(newFilesGroupByPath)) {
+          if (files.length > 50) {
+            newFiles = newFiles.concat(
+              files.slice(files.length - 50, files.length),
+            );
+          } else {
+            newFiles = newFiles.concat(files);
+          }
+        }
+
+        let uniqFiles = _.uniqBy(newFiles, 'path');
+
+        if (newFiles.length > uniqFiles.length) {
           ctx.body = {
             ...rawUserInfo,
-            files: concatAndUniqFiles.filter(file =>
+            files: newFiles.filter(file =>
               userInfo.files.some(
                 userInfoFile => userInfoFile.path === file.path,
               ),
@@ -156,7 +169,7 @@ export default class extends Command {
           ctx.body = 'ok';
         }
 
-        await db.put(rawUserInfoString, JSON.stringify(concatAndUniqFiles));
+        await db.put(rawUserInfoString, JSON.stringify(newFiles));
       } else {
         users = [...users, rawUserInfo];
 

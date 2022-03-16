@@ -212,7 +212,9 @@ async function readREADMEFile(
     files: [file],
   });
 
-  output.appendLine(`README "${file.path}" read.`);
+  output.appendLine(
+    `${new Date().toLocaleString()}: README "${file.path}" read.`,
+  );
 }
 
 function deleteREADMEFile(
@@ -678,6 +680,66 @@ export async function activate(
     vscode.workspace.registerFileSystemProvider('readme', fsp, {
       isCaseSensitive: process.platform === 'linux',
     }),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      [{pattern: '**'}, {pattern: '**/.*'}],
+      {
+        provideCodeLenses: (
+          document,
+          _token,
+        ): vscode.ProviderResult<vscode.CodeLens[]> => {
+          let filePath = document.fileName;
+          let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
+            workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
+          );
+          let count = 0;
+
+          if (workspaceFolders) {
+            for (let workspaceFolder of workspaceFolders) {
+              let workspacePosixPath = workspaceFolder.uri.path;
+              let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+              let config = workspacePathToConfigDict[workspacePosixPath];
+
+              for (let readme of cache.files) {
+                if (
+                  globMatch(
+                    filePath,
+                    Path.posix.dirname(
+                      Path.posix.join(workspacePosixPath, readme.path),
+                    ),
+                    readme.filesPatterns,
+                    config.ignore || [],
+                  )
+                ) {
+                  ++count;
+                }
+              }
+            }
+          }
+
+          return [
+            new vscode.CodeLens(
+              new vscode.Range(
+                new vscode.Position(0, 0),
+                new vscode.Position(0, 0),
+              ),
+              {
+                title: `rtf-README: ${count} associated`,
+                command: 'rtfr.showREADMEs',
+              },
+            ),
+          ];
+        },
+        resolveCodeLens: (
+          codeLens: vscode.CodeLens,
+          _token: vscode.CancellationToken,
+        ): vscode.ProviderResult<vscode.CodeLens> => {
+          return codeLens;
+        },
+      },
+    ),
   );
 
   context.subscriptions.push(

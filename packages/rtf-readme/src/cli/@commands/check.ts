@@ -3,7 +3,7 @@ import * as FS from 'fs';
 import * as Path from 'path';
 
 import chalk from 'chalk';
-import {Command, command, metadata} from 'clime';
+import {Command, ExpectedError, command, metadata} from 'clime';
 import * as _ from 'lodash';
 import fetch from 'node-fetch';
 import simpleGit, {SimpleGit} from 'simple-git';
@@ -314,7 +314,7 @@ export default class extends Command {
     if (hasReported) {
       flushErrors();
 
-      throw new Error("There're some READMEs not read");
+      throw new ExpectedError("There're some READMEs not read");
     }
   }
 }

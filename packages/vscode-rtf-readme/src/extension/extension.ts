@@ -6,20 +6,20 @@ import fetch from 'node-fetch';
 import {
   CONFIG_FILENAME,
   DEFAULT_READMES_TO_BE_CONSIDERED,
+  DEFAULT_RTF_README_SERVER,
   READMEInfo,
   README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
   UserInfo,
   commitInputValidate,
   getFilesPatternsOfREADME,
-  getGitUserInfo,
+  getGetTokenUrl,
   getServeUrl,
   getSimpleGitObject,
   globMatch,
   pathToPosixPath,
   posixPathToPath,
   serverConfigValidate,
-  tokenValidate,
 } from 'rtf-readme';
 import {SimpleGit} from 'simple-git';
 
@@ -165,7 +165,8 @@ async function readREADMEFile(
     return;
   }
 
-  let {name: username, email} = await getGitUserInfo(simpleGitObject);
+  let username = (await simpleGitObject.raw('config', 'user.name')).trim();
+  let email = (await simpleGitObject.raw('config', 'user.email')).trim();
 
   if (!username || !email) {
     return;
@@ -237,7 +238,7 @@ function deleteREADMEFile(
       );
   } else {
     output.appendLine(
-      'Deleting a README file which is not inspected by PleaseREADME.',
+      'Deleting a README file which is not inspected by rtf-README.',
     );
   }
 }
@@ -489,10 +490,8 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       }
 
       if (username === undefined && email === undefined) {
-        let userGitInfo = await getGitUserInfo(simpleGitObject);
-
-        username = userGitInfo.name;
-        email = userGitInfo.email;
+        username = (await simpleGitObject.raw('config', 'user.name')).trim();
+        email = (await simpleGitObject.raw('config', 'user.email')).trim();
       }
 
       if (!username || !email) {
@@ -584,7 +583,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
       vscode.window
         .showInformationMessage(
-          `Please read the f***ing README "${
+          `Please read the f***ing README "./${
             readme.path
           }" for file: ${Path.posix.relative(workspacePath, absolutePath)}.`,
           'Open',
@@ -703,12 +702,14 @@ async function getDataFromInputBox(
     prompt?: string;
   },
   validate: (data: string) => string | true,
+  defaultValue?: string,
   // @ts-ignore
 ): Promise<string | undefined> {
   return vscode.window.showInputBox({
     title: inputBoxInfo.title,
     prompt: inputBoxInfo.prompt,
     ignoreFocusOut: true,
+    value: defaultValue,
     validateInput: value => {
       let validateResult = validate(value);
 
@@ -890,30 +891,20 @@ export async function activate(
 
       let server = await getDataFromInputBox(
         {
-          title: 'The Certralizing Server',
-          prompt: 'Format: http(s)://(ip or domain name):port',
+          title: 'The URL of rtf-README server.',
         },
         serverConfigValidate,
+        DEFAULT_RTF_README_SERVER,
       );
 
       if (server === undefined) {
         return;
       }
 
-      let token = await getDataFromInputBox(
-        {
-          title: 'Server token to modify or get cache file',
-        },
-        tokenValidate,
-      );
-
-      if (token === undefined) {
-        return;
-      }
-
       let init = await getDataFromInputBox(
         {
-          title: 'Input Commit Which "rtfr check" Starts From',
+          title:
+            'Please enter the commit hash that `rtfr check` starts from (optional):',
           prompt:
             "The commit hash string contains only 0-9, a-z and A-Z, and its length is 40. Leave this empty if you dont't intend to use this.",
         },
@@ -925,6 +916,25 @@ export async function activate(
       }
 
       init = init.toLowerCase();
+
+      let tokenResponse = await fetch(getGetTokenUrl(server));
+
+      if (tokenResponse.status !== 200) {
+        output.appendLine('rtfr.createConfigFile: fetching token failed.');
+
+        vscode.window
+          .showErrorMessage(
+            'Create config failed because fetching token from server failed.',
+          )
+          .then(
+            () => {},
+            err => err && output.appendLine(err.toString()),
+          );
+
+        return;
+      }
+
+      let token = await tokenResponse.text();
 
       let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
 

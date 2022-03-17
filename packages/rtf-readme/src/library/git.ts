@@ -20,28 +20,19 @@ export function getSimpleGitObject(
 
 export async function getGitUserInfo(
   simpleGitObject: SimpleGit,
-  commitHash?: string,
+  commitHash: string,
 ): Promise<{name: string; email: string}> {
   let usersRegExp = /(?:([^]+?)\s(<\S+\@\S+>))/;
 
   let userString: string;
 
-  if (commitHash) {
-    userString = await simpleGitObject.raw(
-      '--no-pager',
-      'show',
-      '-s',
-      '--format=%an <%ae>',
-      commitHash,
-    );
-  } else {
-    userString = await simpleGitObject.raw(
-      '--no-pager',
-      'show',
-      '-s',
-      '--format=%an <%ae>',
-    );
-  }
+  userString = await simpleGitObject.raw(
+    '--no-pager',
+    'show',
+    '-s',
+    '--format=%an <%ae>',
+    commitHash,
+  );
 
   let userInfo = userString.match(usersRegExp);
 

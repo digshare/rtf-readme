@@ -5,7 +5,9 @@
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-rtf-readme"
+      ],
       "outFiles": ["${workspaceFolder}/packages/vscode-rtf-readme/bld/**/*.js"],
       "preLaunchTask": "${defaultBuildTask}"
     },

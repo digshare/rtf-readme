@@ -33,12 +33,6 @@ export class ServeOptions extends Options {
     default: './rtf-readme-db',
   })
   dir!: string;
-  @option({
-    flag: 'g',
-    description: 'If true, this program will generate a token.',
-    toggle: true,
-  })
-  generate!: string;
 }
 
 @command({
@@ -57,21 +51,6 @@ export default class extends Command {
     let workspacePath = options.dir
       ? Path.resolve(process.cwd(), options.dir)
       : process.cwd();
-
-    let token: string | undefined;
-
-    if (options.generate) {
-      try {
-        token = await newDBRecordAndGetToken(workspacePath);
-
-        // eslint-disable-next-line no-console
-        console.log(token);
-      } catch (e) {
-        console.error('Generate token failed.');
-
-        console.error(e);
-      }
-    }
 
     const db = getDBObject(workspacePath);
 
@@ -205,6 +184,15 @@ export default class extends Command {
       await db.put(rawUserInfoString, JSON.stringify(files));
 
       ctx.body = 'ok';
+    });
+
+    router.get('/token', async ctx => {
+      let token = await newDBRecordAndGetToken(workspacePath);
+
+      ctx.body = token;
+
+      // eslint-disable-next-line no-console
+      setTimeout(() => console.log(token), 0);
     });
 
     router.delete('/token/:token', async ctx => {

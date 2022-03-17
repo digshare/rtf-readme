@@ -6,11 +6,9 @@ You can use "rtfr-serve --help" to get more information about the commands.
 
 ## Usage Example:
 
-(1) "rtfr-serve 10000 -g"
+(1) "rtfr-serve 10000"
 
 This subcommand is used to run a server, which is for centralizing the infos of users' reading of READMEs.
-
-This subcommand will show you a token if "-g" is followed.
 
 (2) "rtfr-serve new"
 
@@ -21,3 +19,7 @@ Notice, this subcommand cannot be executed when the "serve" subcommand is execut
 ## License
 
 MIT License.
+
+## Requirements
+
+1. As the command "rtfr-serve" is dependent on "level" (the js version of leveldb), you are suggested to run "rtfr-serve" under Linux/WSL/MacOS.

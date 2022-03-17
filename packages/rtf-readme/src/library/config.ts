@@ -60,3 +60,9 @@ export function getServeUrl(config: Config): string {
 
   return `${config.server}${slash}cache/${config.token}`;
 }
+
+export function getGetTokenUrl(server: string): string {
+  let slash = server.endsWith('/') ? '' : '/';
+
+  return `${server}${slash}token`;
+}

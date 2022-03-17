@@ -1,15 +1,17 @@
 import * as Path from 'path';
 
-import {Command, command, metadata, option} from 'clime';
+import {Command, ExpectedError, command, metadata, option} from 'clime';
 import inquirer, {DistinctQuestion} from 'inquirer';
 import * as _ from 'lodash';
+import fetch from 'node-fetch';
 
 import {
   Config,
   DEFAULT_READMES_TO_BE_CONSIDERED,
+  DEFAULT_RTF_README_SERVER,
   commitInputValidate,
+  getGetTokenUrl,
   serverConfigValidate,
-  tokenValidate,
   writeToConfigFile,
 } from '../../library';
 import {READMECliOptions} from '../@options';
@@ -17,47 +19,50 @@ import {READMECliOptions} from '../@options';
 export class InitOptions extends READMECliOptions {
   @option({
     flag: 'i',
-    description: "The commit which rtfr command's process starts from.",
+    description: 'The commit hash that `rtfr check` starts from.',
+    validator: value => {
+      let validateResult = commitInputValidate(value as string);
+
+      if (validateResult !== true) {
+        throw new ExpectedError(validateResult);
+      }
+    },
   })
   init!: string;
+
   @option({
     flag: 's',
-    description:
-      'The certralizing server. Format: http(s)://(ip or domain name):port',
+    description: 'The URL of rtf-README server.',
+    validator: value => {
+      let validateResult = serverConfigValidate(value as string);
+
+      if (validateResult !== true) {
+        throw new ExpectedError(validateResult);
+      }
+    },
   })
   server!: string;
-  @option({
-    flag: 't',
-    description: 'The token for server authentication.',
-  })
-  token!: string;
 }
 
 const promptList = [
   {
     type: 'input',
-    message:
-      'Please input server config(format: http(s)://(ip or domain name):port):',
+    message: 'Please enter server URL:',
     name: 'server',
+    default: DEFAULT_RTF_README_SERVER,
     validate: serverConfigValidate,
   },
   {
     type: 'input',
-    message: 'Server token to modify or get cache file:',
-    name: 'token',
-    validate: tokenValidate,
-  },
-  {
-    type: 'input',
     message:
-      'Please input the commit hash which rtfr starts from (empty if not needed):',
+      'Please enter the commit hash that `rtfr check` starts from (optional):',
     name: 'init',
     validate: commitInputValidate,
   },
 ] as readonly DistinctQuestion[];
 
 @command({
-  description: 'rtf-README project init',
+  description: 'Generate rtf-README config file',
 })
 export default class extends Command {
   @metadata
@@ -70,13 +75,15 @@ export default class extends Command {
       options[key as keyof InitOptions] = value as string;
     }
 
-    if (commitInputValidate(options.init) !== true) {
-      throw new Error('Commit hash is in wrong format.');
-    } else if (serverConfigValidate(options.server) !== true) {
-      throw new Error('Server config is in wrong format.');
+    options.init = options.init.toLowerCase();
+
+    let tokenResponse = await fetch(getGetTokenUrl(options.server));
+
+    if (tokenResponse.status !== 200) {
+      throw new ExpectedError('fetching token failed.');
     }
 
-    options.init = options.init.toLowerCase();
+    let token = await tokenResponse.text();
 
     let workspacePath = options.dir
       ? Path.resolve(process.cwd(), options.dir)
@@ -85,7 +92,7 @@ export default class extends Command {
     let config: Config = {
       init: options.init === '' ? undefined : options.init,
       server: options.server,
-      token: options.token,
+      token,
       ignore: ['**/node_modules/**'],
       readme: DEFAULT_READMES_TO_BE_CONSIDERED,
     };

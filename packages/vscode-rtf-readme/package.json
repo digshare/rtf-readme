@@ -1,8 +1,47 @@
 {
   "name": "vscode-rtf-readme",
-  "version": "0.1.0",
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
+  "publisher": "enverse",
+  "version": "0.2.3",
+  "displayName": "rtf-README",
+  "description": "README hint for users who need to read the README",
+  "engines": {
+    "vscode": "^1.63.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "README"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/makeflow/rtf-readme"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:readme",
+    "onCommand:rtfr.showREADMEs",
+    "onCommand:rtfr.createConfigFile"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "rtfr.showREADMEs",
+        "title": "rtf-README: Show READMEs Associated To This File"
+      },
+      {
+        "command": "rtfr.createConfigFile",
+        "title": "rtf-README: Create Config File"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn esbuild-base -- --minify",
+    "esbuild-base": "esbuild ./src/extension/extension.ts --bundle --outfile=./dist/extension.js --external:vscode --format=cjs --platform=node"
+  },
   "dependencies": {
     "@vscode/test-electron": "^2.1.2",
     "chokidar": "^3.5.3",
@@ -20,6 +59,7 @@
     "@types/mocha": "^9.1.0",
     "@types/node-fetch": "^2.6.1",
     "@types/rimraf": "^3.0.2",
-    "@types/vscode": "^1.64.0"
+    "@types/vscode": "^1.64.0",
+    "esbuild": "^0.14.23"
   }
 }

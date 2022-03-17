@@ -12,15 +12,31 @@ In brief, this project is used to hint users to read README files when they read
 
 Following the steps below, you can learn how to use this project.
 
-(1) Create a project, or you can use a project that already exists.
+[1] Create a config file for a project using `RTF-README: Create Config File` command of vscode extension "rtf-README".
 
-(2) Download "rtf-readme" from npmjs.com.
+- You can get a list of command by the shortcut "Ctrl + Shift + P". After that, you could search for the command `RTF-README: Create Config File`.
 
-(3) Create a config file for the project, either using "rtfr init" or using "RTF-README: Create Config File" command of vscode extension "rtf-README". For newbies, you can just use the default server URL config.
+![Search for extension commands](./resources/search_for_extension_commands.png)
 
-(4) Write README pattern into some READMEs, commit these changes by user A, and then open some files by user B in vscode which some README is associated to. If user B has not read the associated README, you will see a hint at the bottom right of vscode window.
+- After selecting the command, you are supposed to enter some infos.
 
-(5) You can use "rtfr check" command to see the list of READMEs needed to be read by certain user. You can also use "rtfr read" command to "read" a README or open the README in vscode to show that you've read the README.
+![Create config file](./resources/create_config_file_through_extension_command.gif)
+
+For newbies, you can just use the default server URL config.
+
+[2] Write README pattern into some READMEs and commit these changes by user A.
+
+The formats of README pattern are listed below in section `README pattern` of `Overall Introduction`.
+
+You could simply add `<!-- README ** -->` into some README file, which means contributors of this project should see this README before they change any files of this project.
+
+After you add README pattern, commit changes by user A.
+
+[3] Open some files by user B (changed using git commands or using other actual git users) in vscode which some README is associated to. If user B has not read the associated README, you will see a hint at the bottom right of vscode window.
+
+![Information message hint](./resources/information_message_hint.png)
+
+[4] You can use "rtfr check" command to see the list of READMEs needed to be read by certain user. You can also use "rtfr read" command to "read" a README or open the README in vscode to show that you've read the README.
 
 ## Overall Introduction
 

@@ -14,6 +14,33 @@ This is a command that you can use to list READMEs that is relavant to current a
 
 This command could help you to create a config file used by extension and CLI.
 
+Note: You can also create ".rtfrrc" manually, the format is shown below.
+
+```ts
+interface RTFReadmeConfig {
+  /**
+   * The commit which you want the check command searchs from,
+   */
+  init?: string;
+  /**
+   * Server config, the format is "http(s)://xxx.xxx.xxx.xxx:ddddd".
+   */
+  server: string;
+  /**
+   * What you can get by command "rtfr-serve new" or that is fetched from "rtfr" server,
+   */
+  token: string;
+  /**
+   * The path of directory or file to be ignored when processing.
+   */
+  ignore?: string | string[];
+  /**
+   * The pattern of README file path to be included when processing.
+   */
+  readme?: string | string[];
+}
+```
+
 #### Other features
 
 (1) Display on top of the active editor how many READMEs is associated current active file.

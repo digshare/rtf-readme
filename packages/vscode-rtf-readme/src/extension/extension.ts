@@ -1,13 +1,16 @@
 import * as Path from 'path';
+import {TextEncoder} from 'util';
 
 import * as _ from 'lodash';
 import fetch from 'node-fetch';
 import {
   CONFIG_FILENAME,
+  DEFAULT_READMES_TO_BE_CONSIDERED,
   READMEInfo,
   README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
   UserInfo,
+  commitInputValidate,
   getFilesPatternsOfREADME,
   getGitUserInfo,
   getServeUrl,
@@ -15,6 +18,8 @@ import {
   globMatch,
   pathToPosixPath,
   posixPathToPath,
+  serverConfigValidate,
+  tokenValidate,
 } from 'rtf-readme';
 import {SimpleGit} from 'simple-git';
 
@@ -692,6 +697,30 @@ async function handleSpecialFilesAndConditionalHint(
   await hintIfNotRead(filePath);
 }
 
+async function getDataFromInputBox(
+  inputBoxInfo: {
+    title: string;
+    prompt?: string;
+  },
+  validate: (data: string) => string | true,
+  // @ts-ignore
+): Promise<string | undefined> {
+  return vscode.window.showInputBox({
+    title: inputBoxInfo.title,
+    prompt: inputBoxInfo.prompt,
+    ignoreFocusOut: true,
+    validateInput: value => {
+      let validateResult = validate(value);
+
+      if (validateResult === true) {
+        return '';
+      }
+
+      return validateResult;
+    },
+  });
+}
+
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -811,6 +840,113 @@ export async function activate(
     }),
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rtfr.createConfigFile', async () => {
+      let editor = vscode.window.activeTextEditor;
+      let workspacePath: string | undefined;
+
+      if (!editor) {
+        output.appendLine("You don't have any opened files.");
+        output.appendLine(
+          'rtf-README extension will create a config file for the first workspace folder.',
+        );
+
+        workspacePath = vscode.workspace.workspaceFolders?.[0].uri.path;
+
+        if (!workspacePath) {
+          output.appendLine(
+            "There's no workspaceFolder that this extension could get.",
+          );
+
+          return;
+        }
+      } else {
+        let activeFilePath = editor.document.fileName;
+
+        workspacePath = vscode.workspace.workspaceFolders?.find(
+          workspaceFolder =>
+            activeFilePath.startsWith(workspaceFolder.uri.path),
+        )?.uri.path;
+
+        if (!workspacePath) {
+          output.appendLine(
+            `There's no workspaceFolder that match active file path ${activeFilePath}.`,
+          );
+          output.appendLine(
+            'rtf-README extension will create a config file for the first workspace folder.',
+          );
+
+          workspacePath = vscode.workspace.workspaceFolders?.[0].uri.path;
+
+          if (!workspacePath) {
+            output.appendLine(
+              "There's no workspaceFolder that this extension could get.",
+            );
+
+            return;
+          }
+        }
+      }
+
+      let server = await getDataFromInputBox(
+        {
+          title: 'The Certralizing Server',
+          prompt: 'Format: http(s)://(ip or domain name):port',
+        },
+        serverConfigValidate,
+      );
+
+      if (server === undefined) {
+        return;
+      }
+
+      let token = await getDataFromInputBox(
+        {
+          title: 'Server token to modify or get cache file',
+        },
+        tokenValidate,
+      );
+
+      if (token === undefined) {
+        return;
+      }
+
+      let init = await getDataFromInputBox(
+        {
+          title: 'Input Commit Which "rtfr check" Starts From',
+          prompt:
+            "The commit hash string contains only 0-9, a-z and A-Z, and its length is 40. Leave this empty if you dont't intend to use this.",
+        },
+        commitInputValidate,
+      );
+
+      if (init === undefined) {
+        return;
+      }
+
+      init = init.toLowerCase();
+
+      let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
+
+      await vscode.workspace.fs.writeFile(
+        vscode.Uri.file(configFilePath),
+        new TextEncoder().encode(
+          `${JSON.stringify(
+            {
+              init: init === '' ? undefined : init,
+              server,
+              token,
+              ignore: ['**/node_modules/**'],
+              readme: DEFAULT_READMES_TO_BE_CONSIDERED,
+            },
+            undefined,
+            2,
+          )}\n`,
+        ),
+      );
+    }),
+  );
+
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
     let workspacePosixPath = workspaceFolder.uri.path;
     let workspacePath = posixPathToPath(workspacePosixPath);
@@ -858,7 +994,7 @@ export async function activate(
   context.subscriptions.push(
     vscode.commands.registerCommand('rtfr.showREADMEs', () => {
       if (!vscode.window.activeTextEditor) {
-        output.appendLine("rtfr.showREADMEs: You haven't open files.");
+        output.appendLine("rtfr.showREADMEs: You haven't opened any files.");
 
         return;
       }

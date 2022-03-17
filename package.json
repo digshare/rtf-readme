@@ -31,7 +31,11 @@
     "commands": [
       {
         "command": "rtfr.showREADMEs",
-        "title": "Show READMEs Relavant To This File"
+        "title": "RTF-README: Show READMEs Associated To This File"
+      },
+      {
+        "command": "rtfr.createConfigFile",
+        "title": "RTF-README: Create Config File"
       }
     ]
   },

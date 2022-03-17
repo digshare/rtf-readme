@@ -1,4 +1,3 @@
-import * as Net from 'net';
 import * as Path from 'path';
 
 import {Command, command, metadata, option} from 'clime';
@@ -8,6 +7,9 @@ import * as _ from 'lodash';
 import {
   Config,
   DEFAULT_READMES_TO_BE_CONSIDERED,
+  commitInputValidate,
+  serverConfigValidate,
+  tokenValidate,
   writeToConfigFile,
 } from '../../library';
 import {READMECliOptions} from '../@options';
@@ -21,7 +23,7 @@ export class InitOptions extends READMECliOptions {
   @option({
     flag: 's',
     description:
-      'The certralizing server. Format: http(s)://xxx.xxx.xxx.xxx:dddd',
+      'The certralizing server. Format: http(s)://(ip or domain name):port',
   })
   server!: string;
   @option({
@@ -35,14 +37,7 @@ const promptList = [
   {
     type: 'input',
     message:
-      'Please input the commit hash which rtfr starts from (empty if not needed):',
-    name: 'init',
-    validate: commitInputValidate,
-  },
-  {
-    type: 'input',
-    message:
-      'Please input server config(format: http(s)://xxx.xxx.xxx.xxx:dddd):',
+      'Please input server config(format: http(s)://(ip or domain name):port):',
     name: 'server',
     validate: serverConfigValidate,
   },
@@ -50,6 +45,14 @@ const promptList = [
     type: 'input',
     message: 'Server token to modify or get cache file:',
     name: 'token',
+    validate: tokenValidate,
+  },
+  {
+    type: 'input',
+    message:
+      'Please input the commit hash which rtfr starts from (empty if not needed):',
+    name: 'init',
+    validate: commitInputValidate,
   },
 ] as readonly DistinctQuestion[];
 
@@ -89,38 +92,4 @@ export default class extends Command {
 
     await writeToConfigFile(workspacePath, config);
   }
-}
-
-function commitInputValidate(val: string): string | boolean {
-  if (val === '') {
-    return true;
-  }
-
-  if (val && val.match(/^[0-9a-zA-Z]{40}$/)) {
-    return true;
-  }
-
-  return 'The commit hash string contains only 0-9, a-z and A-Z, and its length is 40.';
-}
-
-function serverConfigValidate(val: string): string | boolean {
-  let errorString = 'The format is "http(s)://ip:port", in which ip is ipv4.';
-
-  if (!val) {
-    return errorString;
-  }
-
-  let [protocol, ipAndPort] = val.trim().split('://');
-
-  if (protocol !== 'http' && protocol !== 'https') {
-    return errorString;
-  }
-
-  let [ip, port] = ipAndPort.split(':');
-
-  if (Net.isIPv4(ip) && port.match(/^\d{1,5}$/) && Number(port) <= 65535) {
-    return true;
-  }
-
-  return errorString;
 }

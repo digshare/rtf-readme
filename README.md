@@ -8,6 +8,24 @@ Consider a situation, where a colleague change the README file, and he/she wants
 
 In brief, this project is used to hint users to read README files when they read or change the files that the README has some information for.
 
+## Get Started
+
+Following the steps below, you can learn how to use this project.
+
+(1) Download "rtfr-serve" from npmjs.com to a server, and use "rtfr-serve" command following "-g" to generate a token used to access data on the server. You could also use subcommand "new" of "rtfr-serve" to generate tokens.
+
+(2) Run "rtfr-serve" command to run a server which records info of reading READMEs.
+
+(3) Create a project, or you can use a project that is already used.
+
+(4) Download "rtf-readme" from npmjs.com to a client PC.
+
+(5) Create a config file for the project, either using "rtfr init" or using "RTF-README: Create Config File" command of vscode extension "rtf-README". (Note: the token is generated at step 1)
+
+(6) Write README pattern into some READMEs, commit these changes by user A, and then open some files by user B in vscode which some READMEs is associated to. If user B has not read the associated README, you can see a hint at the bottom right of vscode window.
+
+(7) You can use "rtfr check" command to see the list of READMEs needed to be read by certain user. You can also use "rtfr read" command to "read" a README or open the README in vscode to show that you've read the README.
+
 ## Usage Introduction
 
 ### 1. README pattern
@@ -35,9 +53,17 @@ To use this extension, firstly, you should use command "rtfr-serve" of the CLI p
 
 #### Contributes
 
-(1) Show READMEs Relavant To This File
+(1) RTF-README: Show READMEs Associated To This File
 
 This is a command that you can use to list READMEs that is relavant to current active file.
+
+(2) RTF-README: Create Config File
+
+This command could help you to create a config file used by extension and CLI.
+
+#### Other features
+
+(1) Display on top of the active editor how many READMEs is associated current active file.
 
 ### 3. CLI
 

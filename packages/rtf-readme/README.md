@@ -23,7 +23,7 @@ interface RTFReadmeConfig {
    */
   server: string;
   /**
-   * What you can get by subcommand "serve" or "new",
+   * What you can get by subcommand "new" or fetched from "rtfr" server,
    */
   token: string;
   /**

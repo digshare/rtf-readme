@@ -1,6 +1,6 @@
 # rtf-readme README
 
-This project contains three parts: vscode extension named "rtf-README" and clis named "rtfr"("rtf-readme") and "rtfr-serve".
+This project contains three parts: vscode extension named "rtf-README" and CLIs named "rtfr"("rtf-readme") and "rtfr-serve".
 
 ## Brief Introduction
 
@@ -18,7 +18,7 @@ Following the steps below, you can learn how to use this project.
 
 (3) Create a config file for the project, either using "rtfr init" or using "RTF-README: Create Config File" command of vscode extension "rtf-README". For newbies, you can just use the default server URL config.
 
-(4) Write README pattern into some READMEs, commit these changes by user A, and then open some files by user B in vscode which some README is associated to. If user B has not read the associated README, you can see a hint at the bottom right of vscode window.
+(4) Write README pattern into some READMEs, commit these changes by user A, and then open some files by user B in vscode which some README is associated to. If user B has not read the associated README, you will see a hint at the bottom right of vscode window.
 
 (5) You can use "rtfr check" command to see the list of READMEs needed to be read by certain user. You can also use "rtfr read" command to "read" a README or open the README in vscode to show that you've read the README.
 

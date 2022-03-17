@@ -528,7 +528,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
             readme.path,
           )
         ).split('\n'),
-      ); // TODO: speed up by preprocessing
+      );
       let files = user.files.filter(
         file => commits.findIndex(commit => file.commit === commit) !== -1,
       );

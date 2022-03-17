@@ -177,7 +177,7 @@ export default class extends Command {
               config.ignore || [],
             )
           ) {
-            let commits = readmeFilesPattern.commits; // TODO (ooyyloo): speed optimization
+            let commits = readmeFilesPattern.commits;
 
             let latestCommitsRead = cache.users
               ?.find(

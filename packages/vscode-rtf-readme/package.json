@@ -3,11 +3,11 @@
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "publisher": "enverse",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "displayName": "rtf-README",
   "description": "README hint for users who need to read the README",
   "engines": {
-    "vscode": "^1.63.0"
+    "vscode": "^1.64.0"
   },
   "categories": [
     "Other"

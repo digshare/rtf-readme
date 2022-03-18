@@ -1,20 +1,35 @@
 import * as Path from 'path';
 
-import {Command, command, metadata, param} from 'clime';
+import {Command, ExpectedError, command, metadata, option, param} from 'clime';
 import * as _ from 'lodash';
 import fetch from 'node-fetch';
 import simpleGit from 'simple-git';
 
 import {
   CONFIG_FILENAME,
+  GIT_USER_INFO_STRING_RE,
   TransformedConfig,
   UserInfo,
+  getGitUserInfoFromString,
   getServeUrl,
   globMatch,
   pathToPosixPath,
   readConfigFile,
 } from '../../library';
 import {READMECliOptions} from '../@options';
+
+export class ReadOptions extends READMECliOptions {
+  @option({
+    flag: 'a',
+    description: 'Info of author who read README',
+    validator: value => {
+      if (typeof value !== 'string' || !GIT_USER_INFO_STRING_RE.test(value)) {
+        throw new ExpectedError('Format of "author" is: "name <email>"');
+      }
+    },
+  })
+  author!: string;
+}
 
 @command({
   description: 'Read README and record this reading behavior.',
@@ -27,7 +42,7 @@ export default class extends Command {
       required: true,
     })
     readmePath: string,
-    options: READMECliOptions,
+    options: ReadOptions,
   ): Promise<void> {
     let workspacePath = options.dir
       ? Path.resolve(process.cwd(), options.dir)
@@ -76,9 +91,18 @@ export default class extends Command {
       return;
     }
 
-    let username = (await simpleGitObject.getConfig('user.name')).value;
+    let username: string | null | undefined, email: string | null | undefined;
 
-    let email = (await simpleGitObject.getConfig('user.email')).value;
+    if (options.author) {
+      let userInfo = getGitUserInfoFromString(options.author.trim());
+
+      username = userInfo?.name;
+      email = userInfo?.email;
+    } else {
+      username = (await simpleGitObject.getConfig('user.name')).value;
+
+      email = (await simpleGitObject.getConfig('user.email')).value;
+    }
 
     if (!username || !email) {
       throw Error('Git user info is not configured or invalid');
@@ -127,6 +151,9 @@ export default class extends Command {
     let responseString = await response.text();
 
     if (responseString === 'ok') {
+      // eslint-disable-next-line no-console
+      console.log('success');
+
       return;
     }
 
@@ -165,5 +192,8 @@ export default class extends Command {
         'Delete repeated README record on the server side failed.',
       );
     }
+
+    // eslint-disable-next-line no-console
+    console.log('success');
   }
 }

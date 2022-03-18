@@ -41,6 +41,8 @@ interface RTFReadmeConfig {
 
 This means you've read dir/README.md. A config file '.rtfrrc' is needed before executing this subcommand.
 
+In addition, you could use the `author` option to assign a user to read README. For example, `rtfr read dir/README.md --author "name <email>"`.
+
 (3) "rtfr check"
 
 This is used to find the README which is not read while it needs to be read. A config file '.rtfrrc' is needed before executing this subcommand.

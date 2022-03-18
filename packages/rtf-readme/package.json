@@ -30,12 +30,14 @@
     "node-fetch": "^2.6.7",
     "simple-git": "^3.2.4",
     "text-table": "^0.2.0",
-    "tslib": "^2.3.1"
+    "tslib": "^2.3.1",
+    "wcwidth": "^1.0.1"
   },
   "devDependencies": {
     "@types/inquirer": "^8.2.0",
     "@types/is-valid-glob": "^1.0.0",
     "@types/micromatch": "^4.0.2",
-    "@types/text-table": "^0.2.2"
+    "@types/text-table": "^0.2.2",
+    "@types/wcwidth": "^1.0.0"
   }
 }

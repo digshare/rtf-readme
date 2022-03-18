@@ -8,6 +8,7 @@ import * as _ from 'lodash';
 import fetch from 'node-fetch';
 import simpleGit, {SimpleGit} from 'simple-git';
 import table from 'text-table';
+import wcwidth from 'wcwidth';
 
 import {
   CONFIG_FILENAME,
@@ -399,7 +400,7 @@ function reportError(
 }
 
 function flushErrors(): void {
-  console.error(table(errorStringForAlignment));
+  console.error(table(errorStringForAlignment, {stringLength: wcwidth}));
 }
 
 function getMD5OfCertainFileInGitAndREADME(

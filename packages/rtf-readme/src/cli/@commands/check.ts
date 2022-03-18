@@ -144,134 +144,134 @@ export default class extends Command {
         fromInitialCommit && i === commitHashs.length - 1,
       );
 
-      for (let commitFile of commitFiles) {
-        for (let readmeFilesPattern of readmeFilesPatterns) {
-          let readmePosixPath = Path.posix.join(
-            workspacePosixPath,
-            readmeFilesPattern.readmePosixRelativePath,
-          );
+      let relevantReadmeFilesPatterns = readmeFilesPatterns.filter(pattern =>
+        commitFiles.some(commitFile =>
+          globMatch(
+            Path.posix.join(workspacePosixPath, commitFile),
+            Path.posix.dirname(
+              Path.posix.join(
+                workspacePosixPath,
+                pattern.readmePosixRelativePath,
+              ),
+            ),
+            pattern.filesPatterns,
+            config.ignore || [],
+          ),
+        ),
+      );
 
-          let readmePosixRelativePath =
-            readmeFilesPattern.readmePosixRelativePath;
+      for (let readmeFilesPattern of relevantReadmeFilesPatterns) {
+        let readmePosixRelativePath =
+          readmeFilesPattern.readmePosixRelativePath;
 
-          let md5String = getMD5OfCertainFileInGitAndREADME(
+        let md5String = getMD5OfCertainFileInGitAndREADME(
+          user,
+          readmePosixRelativePath,
+        );
+        let result = md5ToReportedFilesMap.get(md5String);
+
+        if (
+          _.find(result, {
             user,
-            readmePosixRelativePath,
-          );
-          let result = md5ToReportedFilesMap.get(md5String);
+            readmePath: readmePosixRelativePath,
+          })
+        ) {
+          continue;
+        }
 
-          if (
-            _.find(result, {
+        if (result) {
+          result.push({
+            user,
+            readmePath: readmePosixRelativePath,
+          });
+        } else {
+          md5ToReportedFilesMap.set(md5String, [
+            {
               user,
               readmePath: readmePosixRelativePath,
-            })
-          ) {
-            continue;
-          }
+            },
+          ]);
+        }
 
-          if (
-            globMatch(
-              Path.posix.join(workspacePosixPath, commitFile),
-              Path.posix.dirname(readmePosixPath),
-              readmeFilesPattern.filesPatterns,
-              config.ignore || [],
+        let commits = readmeFilesPattern.commits;
+
+        let latestCommitsRead = cache.users
+          ?.find(
+            userToMatch =>
+              user.name === userToMatch.name &&
+              user.email === userToMatch.email,
+          )
+          ?.files?.filter(
+            file =>
+              file.path === readmePosixRelativePath &&
+              commits.findIndex(commit => file.commit === commit) !== -1,
+          )
+          .map(file => file.commit);
+
+        latestCommitsRead?.sort(
+          (a, b) =>
+            commits.findIndex(commit => commit === a) -
+            commits.findIndex(commit => commit === b),
+        );
+        let latestCommitRead = latestCommitsRead?.[0];
+
+        let readmeCommitsByThisUser = _.compact(
+          (
+            await simpleGitObject.raw(
+              'log',
+              '-1',
+              `--author=${user.name} <${user.email}>`,
+              '--pretty=format:%H',
+              readmePosixRelativePath,
             )
-          ) {
-            let commits = readmeFilesPattern.commits;
+          ).split('\n'),
+        );
 
-            let latestCommitsRead = cache.users
-              ?.find(
-                userToMatch =>
-                  user.name === userToMatch.name &&
-                  user.email === userToMatch.email,
-              )
-              ?.files?.filter(
-                file =>
-                  file.path === readmePosixRelativePath &&
-                  commits.findIndex(commit => file.commit === commit) !== -1,
-              )
-              .map(file => file.commit);
-
-            latestCommitsRead?.sort(
-              (a, b) =>
-                commits.findIndex(commit => commit === a) -
-                commits.findIndex(commit => commit === b),
-            );
-            let latestCommitRead = latestCommitsRead?.[0];
-
-            let readmeCommitsByThisUser = _.compact(
-              (
-                await simpleGitObject.raw(
-                  'log',
-                  '-1',
-                  `--author=${user.name} <${user.email}>`,
-                  '--pretty=format:%H',
-                  readmePosixRelativePath,
-                )
-              ).split('\n'),
-            );
-
-            let readmeCommits =
-              latestCommitRead || readmeCommitsByThisUser[0]
-                ? _.compact(
-                    (
-                      await simpleGitObject.raw(
-                        'log',
-                        '-1',
-                        '--pretty=format:%H',
-                        readmePosixRelativePath,
-                      )
-                    ).split('\n'),
+        let readmeCommits =
+          latestCommitRead || readmeCommitsByThisUser[0]
+            ? _.compact(
+                (
+                  await simpleGitObject.raw(
+                    'log',
+                    '-1',
+                    '--pretty=format:%H',
+                    readmePosixRelativePath,
                   )
-                : undefined;
+                ).split('\n'),
+              )
+            : undefined;
 
-            let latestCommitReadToReadmeNowCommitCount = 1;
+        let latestCommitReadToReadmeNowCommitCount = 1;
 
-            if (latestCommitRead) {
-              latestCommitReadToReadmeNowCommitCount = Number(
-                await simpleGitObject.raw(
-                  'rev-list',
-                  `${latestCommitRead}..${readmeCommits![0]}`,
-                  '--count',
-                ),
-              );
-            }
+        if (latestCommitRead) {
+          latestCommitReadToReadmeNowCommitCount = Number(
+            await simpleGitObject.raw(
+              'rev-list',
+              `${latestCommitRead}..${readmeCommits![0]}`,
+              '--count',
+            ),
+          );
+        }
 
-            let readmeCommitToReadmeNowCommitCount = 1;
+        let readmeCommitToReadmeNowCommitCount = 1;
 
-            if (readmeCommitsByThisUser[0]) {
-              readmeCommitToReadmeNowCommitCount = Number(
-                await simpleGitObject.raw(
-                  'rev-list',
-                  `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
-                  '--count',
-                ),
-              );
-            }
+        if (readmeCommitsByThisUser[0]) {
+          readmeCommitToReadmeNowCommitCount = Number(
+            await simpleGitObject.raw(
+              'rev-list',
+              `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
+              '--count',
+            ),
+          );
+        }
 
-            if (
-              latestCommitReadToReadmeNowCommitCount > 0 &&
-              readmeCommitToReadmeNowCommitCount > 0
-            ) {
-              hasReported = true;
+        if (
+          latestCommitReadToReadmeNowCommitCount > 0 &&
+          readmeCommitToReadmeNowCommitCount > 0
+        ) {
+          hasReported = true;
 
-              reportError(user, readmePosixRelativePath);
-
-              if (result) {
-                result.push({
-                  user,
-                  readmePath: readmePosixRelativePath,
-                });
-              } else {
-                md5ToReportedFilesMap.set(md5String, [
-                  {
-                    user,
-                    readmePath: readmePosixRelativePath,
-                  },
-                ]);
-              }
-            }
-          }
+          reportError(user, readmePosixRelativePath);
         }
       }
 

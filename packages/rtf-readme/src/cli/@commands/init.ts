@@ -9,7 +9,6 @@ import {
   Config,
   DEFAULT_READMES_TO_BE_CONSIDERED,
   DEFAULT_RTF_README_SERVER,
-  commitInputValidate,
   getGetTokenUrl,
   serverConfigValidate,
   writeToConfigFile,
@@ -17,19 +16,6 @@ import {
 import {READMECliOptions} from '../@options';
 
 export class InitOptions extends READMECliOptions {
-  @option({
-    flag: 'i',
-    description: 'The commit hash that `rtfr check` starts from.',
-    validator: value => {
-      let validateResult = commitInputValidate(value as string);
-
-      if (validateResult !== true) {
-        throw new ExpectedError(validateResult);
-      }
-    },
-  })
-  init!: string;
-
   @option({
     flag: 's',
     description: 'The URL of rtf-README server.',
@@ -52,13 +38,6 @@ const promptList = [
     default: DEFAULT_RTF_README_SERVER,
     validate: serverConfigValidate,
   },
-  {
-    type: 'input',
-    message:
-      'Please enter the commit hash that `rtfr check` starts from (optional):',
-    name: 'init',
-    validate: commitInputValidate,
-  },
 ] as readonly DistinctQuestion[];
 
 @command({
@@ -75,8 +54,6 @@ export default class extends Command {
       options[key as keyof InitOptions] = value as string;
     }
 
-    options.init = options.init.toLowerCase();
-
     let tokenResponse = await fetch(getGetTokenUrl(options.server));
 
     if (tokenResponse.status !== 200) {
@@ -90,7 +67,6 @@ export default class extends Command {
       : process.cwd();
 
     let config: Config = {
-      init: options.init === '' ? undefined : options.init,
       server: options.server,
       token,
       ignore: ['**/node_modules/**'],

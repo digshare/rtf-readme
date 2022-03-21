@@ -11,7 +11,6 @@ import {
   README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
   UserInfo,
-  commitInputValidate,
   getFilesPatternsOfREADME,
   getGetTokenUrl,
   getServeUrl,
@@ -901,22 +900,6 @@ export async function activate(
         return;
       }
 
-      let init = await getDataFromInputBox(
-        {
-          title:
-            'Please enter the commit hash that `rtfr check` starts from (optional):',
-          prompt:
-            "The commit hash string contains only 0-9, a-z and A-Z, and its length is 40. Leave this empty if you dont't intend to use this.",
-        },
-        commitInputValidate,
-      );
-
-      if (init === undefined) {
-        return;
-      }
-
-      init = init.toLowerCase();
-
       let tokenResponse = await fetch(getGetTokenUrl(server));
 
       if (tokenResponse.status !== 200) {
@@ -943,7 +926,6 @@ export async function activate(
         new TextEncoder().encode(
           `${JSON.stringify(
             {
-              init: init === '' ? undefined : init,
               server,
               token,
               ignore: ['**/node_modules/**'],

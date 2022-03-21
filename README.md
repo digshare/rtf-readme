@@ -1,76 +1,75 @@
-# rtf-readme README
+# 📝 rtf-README
 
-This project contains three parts: vscode extension named "rtf-README" and CLIs named "rtfr"("rtf-readme") and "rtfr-serve".
+Prompt for unread doc changes.
 
-## Brief Introduction
+## Features
 
-Consider a situation, where a colleague change the README file, and he/she wants everybody who's contributing to the same project to read this README before they modify some files which the README has some hints for, introduces some constraints on or has something else that is relevant to. Warn the contributors manually can be annoying, so we write this project to automatically and gracefully warn the contributors.
+- [VSCode Extension][vscode-extension] that prompt for unread doc changes.
+- CLI command that checks if any recent changes are made without the author having read related docs.
 
-In brief, this project is used to hint users to read README files when they read or change the files that the README has some information for.
+## Getting Started with VSCode
 
-## Get Started
+1. Install [VSCode Extension][vscode-extension] and create config file using command `rtf-README: Create Config File`.
 
-Following the steps below, you can learn how to use this project.
+   > You will be asked to enter an rtf-README server address (defaults to `https://rtfr.mufan.com`) for storing commit hashes of READMEs that users read.
+   >
+   > You can also setup your own server using CLI `rtfr-serve` (provided by npm package `rtf-readme`).
+   >
+   > Also check out the `.rtfrrc` generated for common options.
 
-[1] Create a config file for a project using `RTF-README: Create Config File` command of vscode extension "rtf-README".
+2. Edit a `README.md` file and append the following code:
 
-- You can get a list of command by the shortcut "Ctrl + Shift + P". After that, you could search for the command `RTF-README: Create Config File`.
+   ```html
+   <!-- README ** -->
+   ```
 
-![Search for extension commands](./resources/search_for_extension_commands.png)
+   Or in multiline to support multiple patterns.
 
-- After selecting the command, you are supposed to enter some infos.
+   ```html
+   <!--
+     README
+       **
+   -->
+   ```
 
-![Create config file](./resources/create_config_file_through_extension_command.gif)
+   The pattern is relative to the markdown file, or `/` relative to `.rtfrrc`.
 
-For newbies, you can just use the default server URL config.
+3. Add `enverse.vscode-rtf-readme` to VSCode Recommended Extensions (`.vscode/extensions.json`) so that your teammate would not forget to install the extension.
 
-[2] Write README pattern into some READMEs and commit these changes by user A.
+   ```json
+   {
+     "recommendations": ["enverse.vscode-rtf-readme"]
+   }
+   ```
 
-The formats of README pattern are listed below in section `README pattern` of `Overall Introduction`.
+4. Now, if anyone else (using VSCode with the extension) opened a file matched by `**` (obviously any file except for those ignored by `ignore` config option in `.rtfrrc`), they will get prompted to read the f\*\*\*ing README (with diff):
 
-You could simply add `<!-- README ** -->` into some README file, which means contributors of this project should see this README before they change any files of this project.
+   <center>
+     <img width="480" alt="rtf-README prompt" src="https://user-images.githubusercontent.com/970430/159254726-9a9918c2-9852-4954-90b1-d27c5e966d85.png">
+   </center>
 
-After you add README pattern, commit changes by user A.
+## Getting Started with CLI
 
-[3] Open some files by user B (changed using git commands or using other actual git users) in vscode which some README is associated to. If user B has not read the associated README, you will see a hint at the bottom right of vscode window.
+1. Install npm package:
 
-![Information message hint](./resources/information_message_hint.png)
+   ```bash
+   yarn add -D rtf-readme
+   # or
+   npm install -D rtf-readme
+   ```
 
-[4] You can use "rtfr check" command to see the list of READMEs needed to be read by certain user. You can also use "rtfr read" command to "read" a README or open the README in vscode to show that you've read the README.
+2. Check the docs reading status:
 
-## Overall Introduction
+   ```bash
+   yarn rtfr check
+   # or
+   npx rtfr check
+   ```
 
-### 1. README pattern
-
-To get the extension rtf-README or CLI work, you should write "README pattern" into some README.md firstly. The README pattern is in glob pattern, and means that when the files whose paths match the README pattern are opened or modified, the README.md should be read. Using rtf-README extension, you will be hinted to read README.md when you open or modify the matched file. Using the subcommand "check" of command "rtfr", you will be informed which README.md has not been read by some user after he/she has changed some file concerned by the README.md.
-
-#### README pattern format:
-
-[1] &lt;!-- README packages/\*\*/\*.ts --&gt;
-
-[2]
-
-```
-  <!-- README
-       packages/**/*.ts
-       packages/**/*.tsx
-  -->
-```
-
-### 2. [Vscode extension](./packages/vscode-rtf-readme/README.md).
-
-### 3. CLI
-
-The CLI "rtfr" is used to find files changed by certain user while the relevant README is not read. It can also be used to create a config file named ".rtfrrc".
-
-The CLI "rtfr-serve" is used to run a server and get a token which is supposed to be filled in '.rtfrrc'.
-
-You can use "rtfr --help" or "rtfr-serve --help" to get more information about the commands.
-
-#### [1] ["rtfr-serve"](./packages/rtfr-serve/README.md):
-
-#### [2] ["rtfr" or "rtf-readme"](./packages/rtf-readme/README.md)
+   You can add this to your CI/CD flow to make sure everyone read docs they are expected to read.
 
 ## License
 
 MIT License.
+
+[vscode-extension]: https://marketplace.visualstudio.com/items?itemName=enverse.vscode-rtf-readme

@@ -1009,6 +1009,11 @@ export async function activate(
         for (let workspaceFolder of workspaceFolders) {
           let workspacePosixPath = workspaceFolder.uri.path;
           let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+
+          if (!cache) {
+            continue;
+          }
+
           let config = workspacePathToConfigDict[workspacePosixPath];
 
           let readmeFilePaths: string[] = [workspacePosixPath];
@@ -1110,6 +1115,11 @@ export async function activate(
             for (let workspaceFolder of workspaceFolders) {
               let workspacePosixPath = workspaceFolder.uri.path;
               let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+
+              if (!cache) {
+                continue;
+              }
+
               let config = workspacePathToConfigDict[workspacePosixPath];
 
               for (let readme of cache.files) {

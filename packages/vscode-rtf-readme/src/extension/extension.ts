@@ -55,9 +55,7 @@ async function loadREADMEFile(
   workspacePosixPath: string,
 ): Promise<boolean> {
   let readmeContent = (
-    await vscode.workspace.fs.readFile(
-      vscode.Uri.from({scheme: 'file', path: absolutePosixPath}),
-    )
+    await vscode.workspace.fs.readFile(vscode.Uri.file(absolutePosixPath))
   ).toString();
   let filesPatterns = getFilesPatternsOfREADME(readmeContent);
 
@@ -244,7 +242,7 @@ function deleteREADMEFile(
 
 async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
   let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
-  let uri = vscode.Uri.from({scheme: 'file', path: configFilePath});
+  let uri = vscode.Uri.file(configFilePath);
 
   try {
     let stat = await vscode.workspace.fs.stat(uri);
@@ -300,9 +298,7 @@ async function walkThroughFilesToLoadREADME(
 ): Promise<void> {
   if (!fileType) {
     try {
-      let stat = await vscode.workspace.fs.stat(
-        vscode.Uri.from({scheme: 'file', path}),
-      );
+      let stat = await vscode.workspace.fs.stat(vscode.Uri.file(path));
 
       fileType = stat.type;
     } catch (e) {
@@ -324,17 +320,26 @@ async function walkThroughFilesToLoadREADME(
         workspacePosixPath,
         config.readme || [],
         config.ignore || [],
+        workspacePosixPath,
       )
     ) {
       loadREADMEFilePromises.push(loadREADMEFile(path, workspacePosixPath));
     }
   } else if (fileType === vscode.FileType.Directory) {
     for (let [fileName, newFileType] of await vscode.workspace.fs.readDirectory(
-      vscode.Uri.from({scheme: 'file', path}),
+      vscode.Uri.file(path),
     )) {
       let filePath = Path.posix.resolve(path, fileName);
 
-      if (!globMatch(filePath, workspacePosixPath, config.ignore || [], [])) {
+      if (
+        !globMatch(
+          filePath,
+          workspacePosixPath,
+          config.ignore || [],
+          [],
+          workspacePosixPath,
+        )
+      ) {
         await walkThroughFilesToLoadREADME(
           workspacePosixPath,
           filePath,
@@ -458,7 +463,15 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       continue;
     }
 
-    if (globMatch(absolutePath, workspacePath, config.ignore || [], [])) {
+    if (
+      globMatch(
+        absolutePath,
+        workspacePath,
+        config.ignore || [],
+        [],
+        workspacePath,
+      )
+    ) {
       continue;
     }
 
@@ -482,6 +495,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         Path.posix.dirname(readmeAbsolutePath),
         readme.filesPatterns,
         config.ignore || [],
+        workspacePath,
       );
 
       if (!matched) {
@@ -594,7 +608,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
 
             if (!commit) {
               return vscode.window.showTextDocument(
-                vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
+                vscode.Uri.file(readmeAbsolutePath),
               );
             } else {
               return vscode.commands.executeCommand(
@@ -604,7 +618,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
                   path: readmeAbsolutePath,
                   query: JSON.stringify({commit}),
                 }),
-                vscode.Uri.from({scheme: 'file', path: readmeAbsolutePath}),
+                vscode.Uri.file(readmeAbsolutePath),
               );
             }
           }
@@ -666,6 +680,7 @@ async function handleSpecialFilesAndConditionalHint(
           workspacePosixPath,
           config.readme || [],
           config.ignore || [],
+          workspacePosixPath,
         )
       ) {
         switch (eventType) {
@@ -742,10 +757,7 @@ export async function activate(
           fileType: 'file' | 'dir';
         };
 
-        let uri = vscode.Uri.from({
-          scheme: 'file',
-          path: eventWithFilePath.filePath,
-        });
+        let uri = vscode.Uri.file(eventWithFilePath.filePath);
 
         if (eventWithFilePath.fileType === 'file') {
           await handleSpecialFilesAndConditionalHint(uri, event.type);
@@ -828,6 +840,7 @@ export async function activate(
                 workspacePosixPath,
                 config.readme || [],
                 config.ignore || [],
+                workspacePosixPath,
               )
             ) {
               await readREADMEFile(filePath, workspacePosixPath);
@@ -969,7 +982,7 @@ export async function activate(
       }
 
       await handleSpecialFilesAndConditionalHint(
-        vscode.Uri.from({scheme: 'file', path: absolutePath}),
+        vscode.Uri.file(absolutePath),
         FileOpenType.Opened,
       );
     }),
@@ -1027,6 +1040,7 @@ export async function activate(
                 ),
                 readme.filesPatterns,
                 config.ignore || [],
+                workspacePosixPath,
               )
             ) {
               readmeFilePaths.push(readme.path);
@@ -1052,10 +1066,7 @@ export async function activate(
                 },
                 ...readmeFilePaths.slice(1).map(readmeFilePath => ({
                   label: Path.posix.basename(readmeFilePath),
-                  description:
-                    Path.posix.dirname(readmeFilePath) === '.'
-                      ? undefined
-                      : Path.posix.dirname(readmeFilePath),
+                  description: Path.posix.dirname(readmeFilePath),
                   workspacePosixPath: readmeFilePaths[0],
                 })),
               ] as (vscode.QuickPickItem & {workspacePosixPath: string})[];
@@ -1131,6 +1142,7 @@ export async function activate(
                     ),
                     readme.filesPatterns,
                     config.ignore || [],
+                    workspacePosixPath,
                   )
                 ) {
                   ++count;

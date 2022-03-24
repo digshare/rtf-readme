@@ -74,6 +74,7 @@ export default class extends Command {
         workspacePosixPath,
         config.ignore || [],
         [],
+        workspacePosixPath,
       )
     ) {
       console.warn('You read a README that is ignoerd by this program.');
@@ -82,7 +83,13 @@ export default class extends Command {
     }
 
     if (
-      !globMatch(readmePosixFilePath, workspacePath, config.readme || [], [])
+      !globMatch(
+        readmePosixFilePath,
+        workspacePath,
+        config.readme || [],
+        [],
+        workspacePosixPath,
+      )
     ) {
       console.warn(
         'This is not a README or you forget to add README pattern in .rtfrrc.',

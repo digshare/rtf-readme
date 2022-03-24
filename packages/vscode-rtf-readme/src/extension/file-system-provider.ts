@@ -2,10 +2,9 @@ import * as fs from 'fs';
 import * as Path from 'path';
 import {TextEncoder} from 'util';
 
-import * as chokidar from 'chokidar';
 import mkdirp from 'mkdirp';
 import rimraf from 'rimraf';
-import {pathToPosixPath, posixPathToPath} from 'rtf-readme';
+import {posixPathToPath} from 'rtf-readme';
 import simpleGit from 'simple-git';
 
 import * as vscode from 'vscode';
@@ -22,33 +21,47 @@ export class FileSystemProvider implements vscode.FileSystemProvider {
   }
 
   watch(uri: vscode.Uri): vscode.Disposable {
-    let watcher = chokidar.watch(uri.fsPath, {
-      ignoreInitial: true,
-      ignored: /(^|[\/\\])(\.git|node_modules)/,
-      useFsEvents: false,
-      usePolling: false,
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(uri, '**'),
+    );
+
+    watcher.onDidChange(uri => {
+      this.watcherEventCallback(
+        uri,
+        vscode.FileChangeType.Changed,
+        vscode.FileType.File,
+      ).catch(console.error);
+    });
+    watcher.onDidCreate(uri => {
+      this.watcherEventCallback(uri, vscode.FileChangeType.Changed).catch(
+        console.error,
+      );
+    });
+    watcher.onDidDelete(uri => {
+      this.watcherEventCallback(uri, vscode.FileChangeType.Changed).catch(
+        console.error,
+      );
     });
 
-    watcher.on('all', async (event, path) => {
-      let absolutePath = pathToPosixPath(path);
+    return {dispose: () => watcher.dispose()};
+  }
 
-      this._onDidChangeFile.fire([
-        // eslint-disable-next-line @mufan/no-object-literal-type-assertion
-        {
-          type:
-            event === 'change'
-              ? vscode.FileChangeType.Changed
-              : (await FSUtils.exists(path))
-              ? vscode.FileChangeType.Created
-              : vscode.FileChangeType.Deleted,
-          uri,
-          filePath: absolutePath,
-          fileType: event.indexOf('Dir') === -1 ? 'file' : 'dir',
-        } as vscode.FileChangeEvent,
-      ]);
-    });
+  async watcherEventCallback(
+    uri: vscode.Uri,
+    fileChangeType: vscode.FileChangeType,
+    specificFileType?: vscode.FileType,
+  ): Promise<void> {
+    let fileType = specificFileType || (await this.stat(uri)).type;
 
-    return {dispose: () => watcher.close().catch(console.error)};
+    this._onDidChangeFile.fire([
+      // eslint-disable-next-line @mufan/no-object-literal-type-assertion
+      {
+        type: fileChangeType,
+        uri,
+        filePath: uri.path,
+        fileType: fileType === vscode.FileType.Directory ? 'dir' : 'file',
+      } as vscode.FileChangeEvent,
+    ]);
   }
 
   stat(uri: vscode.Uri): Thenable<vscode.FileStat> {

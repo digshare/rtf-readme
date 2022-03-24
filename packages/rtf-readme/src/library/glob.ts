@@ -8,18 +8,12 @@ export function globMatch(
   dirPosixPath: string,
   patterns: string[],
   ignroePatterns: string[],
+  workspacePosixPath: string,
 ): boolean {
   patterns = patterns.concat(
     ignroePatterns.map(pattern =>
       pattern.startsWith('!') ? pattern.slice(1) : `!${pattern}`,
     ),
-  );
-  patterns = patterns.map(pattern =>
-    pattern.startsWith('/')
-      ? pattern.slice(1)
-      : pattern.startsWith('!/')
-      ? `!${pattern.slice(2)}`
-      : pattern,
   );
 
   let tasks = fg.generateTasks(patterns);
@@ -44,10 +38,17 @@ export function globMatch(
         }
       }
 
-      return reFilter(
-        Path.posix.join(task.base, relativePosixFilePath),
-        convertPatternsToRe(task.positive),
-        convertPatternsToRe(task.negative),
+      return (
+        reFilter(
+          Path.posix.join(task.base, relativePosixFilePath),
+          convertPatternsToRe(task.positive),
+          convertPatternsToRe(task.negative),
+        ) ||
+        reFilter(
+          `/${Path.posix.relative(workspacePosixPath, posixFilePath)}`,
+          convertPatternsToRe(task.positive),
+          convertPatternsToRe(task.negative),
+        )
       );
     } else {
       return false;

@@ -17,3 +17,4 @@ packages/**
 .rtf-readme.json
 rtf-readme-db
 *.vsix
+bld/**

@@ -157,6 +157,7 @@ export default class extends Command {
             ),
             pattern.filesPatterns,
             config.ignore || [],
+            workspacePosixPath,
           ),
         ),
       );
@@ -330,7 +331,15 @@ function walkThroughFilesToGetREADME(
     let stat = FS.statSync(path);
 
     if (stat.isFile()) {
-      if (globMatch(path, workspacePosixPath, readmePatterns, ignorePatterns)) {
+      if (
+        globMatch(
+          path,
+          workspacePosixPath,
+          readmePatterns,
+          ignorePatterns,
+          workspacePosixPath,
+        )
+      ) {
         return [path];
       } else {
         return undefined;
@@ -345,6 +354,7 @@ function walkThroughFilesToGetREADME(
             workspacePosixPath,
             ignorePatterns,
             [],
+            workspacePosixPath,
           )
         ) {
           continue;

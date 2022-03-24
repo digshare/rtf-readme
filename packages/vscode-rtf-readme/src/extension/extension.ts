@@ -736,6 +736,20 @@ async function getDataFromInputBox(
   });
 }
 
+async function getMarkdownTitle(
+  readmeFilePath: string,
+): Promise<string | undefined> {
+  let readmeFileContent = (
+    await vscode.workspace.fs.readFile(vscode.Uri.file(readmeFilePath))
+  ).toString();
+
+  let matchResult = readmeFileContent.match(
+    /((?<atxlayer>#+)\s*(?<atxname>.+))|((?<setexname>[\w|\d|\s|-]+)\n(?<setexLayer>[-|=]{2,}))/,
+  );
+
+  return matchResult?.[3] || matchResult?.[5];
+}
+
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -997,7 +1011,7 @@ export async function activate(
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('rtfr.showREADMEs', () => {
+    vscode.commands.registerCommand('rtfr.showREADMEs', async () => {
       if (!vscode.window.activeTextEditor) {
         output.appendLine("rtfr.showREADMEs: You haven't opened any files.");
 
@@ -1058,25 +1072,34 @@ export async function activate(
       vscode.window
         .showQuickPick(
           _.flatten(
-            readmeFilePathsSplitByWorkspace.map(readmeFilePaths => {
-              return [
-                {
-                  label: readmeFilePaths[0],
-                  kind: vscode.QuickPickItemKind.Separator,
-                },
-                ...readmeFilePaths.slice(1).map(readmeFilePath => ({
-                  label: Path.posix.basename(readmeFilePath),
-                  description: Path.posix.dirname(readmeFilePath),
-                  workspacePosixPath: readmeFilePaths[0],
-                })),
-              ] as (vscode.QuickPickItem & {workspacePosixPath: string})[];
-            }),
+            await Promise.all(
+              readmeFilePathsSplitByWorkspace.map(async readmeFilePaths => {
+                return [
+                  {
+                    label: readmeFilePaths[0],
+                    kind: vscode.QuickPickItemKind.Separator,
+                  },
+                  ...(await Promise.all(
+                    readmeFilePaths.slice(1).map(async readmeFilePath => ({
+                      label: Path.posix.basename(readmeFilePath),
+                      description: Path.posix.dirname(readmeFilePath),
+                      workspacePosixPath: readmeFilePaths[0],
+                      detail: await getMarkdownTitle(
+                        Path.posix.resolve(readmeFilePaths[0], readmeFilePath),
+                      ),
+                    })),
+                  )),
+                ] as (vscode.QuickPickItem & {workspacePosixPath: string})[];
+              }),
+            ),
           ),
           {
             placeHolder:
               readmeFilePathsSplitByWorkspace.length > 0
                 ? 'Search README files by name'
                 : 'No README files associated with this file',
+            matchOnDescription: true,
+            matchOnDetail: true,
           },
         )
         .then(item => {
@@ -1104,74 +1127,71 @@ export async function activate(
   );
 
   context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(
-      [{pattern: '**'}, {pattern: '**/.*'}],
-      {
-        provideCodeLenses: (
-          document,
-          _token,
-        ): vscode.ProviderResult<vscode.CodeLens[]> => {
-          let filePath = document.fileName;
+    vscode.languages.registerCodeLensProvider([{pattern: '**'}], {
+      provideCodeLenses: (
+        document,
+        _token,
+      ): vscode.ProviderResult<vscode.CodeLens[]> => {
+        let filePath = document.fileName;
 
-          if (filePath === Path.basename(filePath)) {
-            return;
-          }
+        if (filePath === Path.basename(filePath)) {
+          return;
+        }
 
-          let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
-            workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
-          );
-          let count = 0;
+        let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
+          workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
+        );
+        let count = 0;
 
-          if (workspaceFolders) {
-            for (let workspaceFolder of workspaceFolders) {
-              let workspacePosixPath = workspaceFolder.uri.path;
-              let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+        if (workspaceFolders) {
+          for (let workspaceFolder of workspaceFolders) {
+            let workspacePosixPath = workspaceFolder.uri.path;
+            let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
 
-              if (!cache) {
-                continue;
-              }
+            if (!cache) {
+              continue;
+            }
 
-              let config = workspacePathToConfigDict[workspacePosixPath];
+            let config = workspacePathToConfigDict[workspacePosixPath];
 
-              for (let readme of cache.files) {
-                if (
-                  globMatch(
-                    filePath,
-                    Path.posix.dirname(
-                      Path.posix.join(workspacePosixPath, readme.path),
-                    ),
-                    readme.filesPatterns,
-                    config.ignore || [],
-                    workspacePosixPath,
-                  )
-                ) {
-                  ++count;
-                }
+            for (let readme of cache.files) {
+              if (
+                globMatch(
+                  filePath,
+                  Path.posix.dirname(
+                    Path.posix.join(workspacePosixPath, readme.path),
+                  ),
+                  readme.filesPatterns,
+                  config.ignore || [],
+                  workspacePosixPath,
+                )
+              ) {
+                ++count;
               }
             }
           }
+        }
 
-          return [
-            new vscode.CodeLens(
-              new vscode.Range(
-                new vscode.Position(0, 0),
-                new vscode.Position(0, 0),
-              ),
-              {
-                title: `rtf-README: ${count} associated`,
-                command: 'rtfr.showREADMEs',
-              },
+        return [
+          new vscode.CodeLens(
+            new vscode.Range(
+              new vscode.Position(0, 0),
+              new vscode.Position(0, 0),
             ),
-          ];
-        },
-        resolveCodeLens: (
-          codeLens: vscode.CodeLens,
-          _token: vscode.CancellationToken,
-        ): vscode.ProviderResult<vscode.CodeLens> => {
-          return codeLens;
-        },
+            {
+              title: `rtf-README: ${count} associated`,
+              command: 'rtfr.showREADMEs',
+            },
+          ),
+        ];
       },
-    ),
+      resolveCodeLens: (
+        codeLens: vscode.CodeLens,
+        _token: vscode.CancellationToken,
+      ): vscode.ProviderResult<vscode.CodeLens> => {
+        return codeLens;
+      },
+    }),
   );
 }
 

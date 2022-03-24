@@ -3,7 +3,7 @@
   "license": "MIT",
   "author": "Chengdu Mufan Technology Co., Ltd.",
   "publisher": "enverse",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "displayName": "rtf-README",
   "description": "README hint for users who need to read the README",
   "engines": {
@@ -44,7 +44,6 @@
   },
   "dependencies": {
     "@vscode/test-electron": "^2.1.2",
-    "chokidar": "^3.5.3",
     "lodash": "^4.17.21",
     "mkdirp": "^1.0.4",
     "mocha": "^9.2.0",

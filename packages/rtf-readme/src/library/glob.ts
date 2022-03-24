@@ -26,12 +26,15 @@ export function globMatch(
     if (posixFilePath.startsWith(root)) {
       relativePosixFilePath = Path.posix.relative(root, posixFilePath);
 
+      let positivePatterns = convertPatternsToRe(task.positive);
+      let negativePatterns = convertPatternsToRe(task.negative);
+
       if (task.base === '.') {
         if (
           reFilter(
             `./${relativePosixFilePath}`,
-            convertPatternsToRe(task.positive),
-            convertPatternsToRe(task.negative),
+            positivePatterns,
+            negativePatterns,
           )
         ) {
           return true;
@@ -41,13 +44,13 @@ export function globMatch(
       return (
         reFilter(
           Path.posix.join(task.base, relativePosixFilePath),
-          convertPatternsToRe(task.positive),
-          convertPatternsToRe(task.negative),
+          positivePatterns,
+          negativePatterns,
         ) ||
         reFilter(
           `/${Path.posix.relative(workspacePosixPath, posixFilePath)}`,
-          convertPatternsToRe(task.positive),
-          convertPatternsToRe(task.negative),
+          positivePatterns,
+          negativePatterns,
         )
       );
     } else {

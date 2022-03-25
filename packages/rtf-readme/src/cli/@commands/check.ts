@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import * as Crypto from 'crypto';
 import * as FS from 'fs';
 import * as Path from 'path';
 
@@ -137,6 +137,21 @@ export default class extends Command {
     for (let i = 0; i < commitHashs.length; ++i) {
       let commitHash = commitHashs[i];
 
+      let parents = (
+        await simpleGitObject.raw(
+          'show',
+          '--no-patch',
+          '--format=%P',
+          commitHash,
+        )
+      )
+        .trim()
+        .split(' ');
+
+      if (parents.length >= 2) {
+        continue;
+      }
+
       let user = await getGitUserInfo(simpleGitObject, commitHash);
 
       let commitFiles = await getCommitFiles(
@@ -273,7 +288,7 @@ export default class extends Command {
         ) {
           hasReported = true;
 
-          reportError(user, readmePosixRelativePath);
+          reportError(user, readmePosixRelativePath, commitHash);
         }
       }
 
@@ -400,7 +415,9 @@ async function getCommitFiles(
 function reportError(
   user: {name: string; email: string},
   readmePosixRelativePath: string,
+  commitHash: string,
 ): void {
+  errorStringForAlignment.push(['Commit:', chalk.magenta(commitHash)]);
   errorStringForAlignment.push([
     'User:',
     `${chalk.green(`${user.name} <${user.email}>`)},`,
@@ -421,5 +438,5 @@ function getMD5OfCertainFileInGitAndREADME(
 }
 
 function md5(content: string): string {
-  return crypto.createHash('md5').update(content).digest('hex');
+  return Crypto.createHash('md5').update(content).digest('hex');
 }

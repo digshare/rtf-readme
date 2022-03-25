@@ -1082,7 +1082,10 @@ export async function activate(
                   ...(await Promise.all(
                     readmeFilePaths.slice(1).map(async readmeFilePath => ({
                       label: Path.posix.basename(readmeFilePath),
-                      description: Path.posix.dirname(readmeFilePath),
+                      description:
+                        Path.posix.dirname(readmeFilePath) === '.'
+                          ? undefined
+                          : Path.posix.dirname(readmeFilePath),
                       workspacePosixPath: readmeFilePaths[0],
                       detail: await getMarkdownTitle(
                         Path.posix.resolve(readmeFilePaths[0], readmeFilePath),

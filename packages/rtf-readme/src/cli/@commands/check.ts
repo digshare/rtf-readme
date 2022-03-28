@@ -76,32 +76,32 @@ export default class extends Command {
       return;
     }
 
-    let readmeFilesPatterns: {
-      readmePosixRelativePath: string;
-      filesPatterns: string[];
-      commits: string[];
-    }[] = [];
+    let readmePosixRelativePaths = readmePaths.map(readmePath =>
+      pathToPosixPath(Path.relative(workspacePath, readmePath)),
+    );
 
-    for (let readmePath of readmePaths) {
-      let readmeContent = (await FS.promises.readFile(readmePath)).toString();
-      let readmePosixRelativePath = pathToPosixPath(
-        Path.relative(workspacePath, readmePath),
-      );
+    let commitHashToPosixRelativePathToReadmeContentMapMap: Map<
+      string,
+      Map<string, string>
+    > = new Map();
 
-      readmeFilesPatterns.push({
+    let readmePosixRelativePathToreadmeCommitHashs: Map<string, string[]> =
+      new Map();
+
+    for (let readmePosixRelativePath of readmePosixRelativePaths) {
+      readmePosixRelativePathToreadmeCommitHashs.set(
         readmePosixRelativePath,
-        filesPatterns: getFilesPatternsOfREADME(readmeContent),
-        commits: _.compact(
+        _.compact(
           (
             await simpleGitObject.raw(
               'log',
               `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
-              '--pretty=format:%H',
+              '--format=%H',
               readmePosixRelativePath,
             )
           ).split('\n'),
         ),
-      });
+      );
     }
 
     let commitHashs = _.compact(
@@ -134,8 +134,14 @@ export default class extends Command {
 
     let hasReported = false;
 
-    for (let i = 0; i < commitHashs.length; ++i) {
+    for (let i = commitHashs.length - 1; i >= 0; --i) {
       let commitHash = commitHashs[i];
+
+      let commitFiles = await getCommitFiles(
+        simpleGitObject,
+        commitHash,
+        fromInitialCommit && i === commitHashs.length - 1,
+      );
 
       let parents = (
         await simpleGitObject.raw(
@@ -148,181 +154,244 @@ export default class extends Command {
         .trim()
         .split(' ');
 
-      if (parents.length >= 2) {
-        continue;
-      }
+      if (parents.length < 2) {
+        let readmeInfos = await Promise.all(
+          readmePosixRelativePaths.map(async readmePosixRelativePath => {
+            let content: string;
 
-      let user = await getGitUserInfo(simpleGitObject, commitHash);
+            if (
+              commitHashToPosixRelativePathToReadmeContentMapMap
+                .get(parents[0])
+                ?.has(readmePosixRelativePath)
+            ) {
+              content = commitHashToPosixRelativePathToReadmeContentMapMap
+                .get(parents[0])!
+                .get(readmePosixRelativePath)!;
+            } else {
+              try {
+                content = await simpleGitObject.raw(
+                  'show',
+                  `${commitHash}:${readmePosixRelativePath}`,
+                );
+              } catch (e) {
+                content = '';
+              }
+            }
 
-      let commitFiles = await getCommitFiles(
-        simpleGitObject,
-        commitHash,
-        fromInitialCommit && i === commitHashs.length - 1,
-      );
-
-      let relevantReadmeFilesPatterns = readmeFilesPatterns.filter(pattern =>
-        commitFiles.some(commitFile =>
-          globMatch(
-            Path.posix.join(workspacePosixPath, commitFile),
-            Path.posix.dirname(
-              Path.posix.join(
-                workspacePosixPath,
-                pattern.readmePosixRelativePath,
-              ),
-            ),
-            pattern.filesPatterns,
-            config.ignore || [],
-            workspacePosixPath,
-          ),
-        ),
-      );
-
-      for (let readmeFilesPattern of relevantReadmeFilesPatterns) {
-        let readmePosixRelativePath =
-          readmeFilesPattern.readmePosixRelativePath;
-
-        let md5String = getMD5OfCertainFileInGitAndREADME(
-          user,
-          readmePosixRelativePath,
+            return {
+              readmePosixRelativePath,
+              filePatterns: getFilesPatternsOfREADME(content),
+              commits: readmePosixRelativePathToreadmeCommitHashs.get(
+                readmePosixRelativePath,
+              )!,
+            };
+          }),
         );
-        let result = md5ToReportedFilesMap.get(md5String);
 
-        if (
-          _.find(result, {
-            user,
-            readmePath: readmePosixRelativePath,
-          })
-        ) {
-          continue;
-        }
+        let relevantReadmeFilesPatterns = readmeInfos.filter(readmeInfo => {
+          return (
+            readmeInfo.filePatterns.length > 0 &&
+            commitFiles.some(commitFile =>
+              globMatch(
+                Path.posix.join(workspacePosixPath, commitFile),
+                Path.posix.dirname(
+                  Path.posix.join(
+                    workspacePosixPath,
+                    readmeInfo.readmePosixRelativePath,
+                  ),
+                ),
+                readmeInfo.filePatterns,
+                config.ignore || [],
+                workspacePosixPath,
+              ),
+            )
+          );
+        });
 
-        if (result) {
-          result.push({
+        let user = await getGitUserInfo(simpleGitObject, commitHash);
+
+        for (let readmeFilesPattern of relevantReadmeFilesPatterns) {
+          let readmePosixRelativePath =
+            readmeFilesPattern.readmePosixRelativePath;
+
+          let md5String = getMD5OfCertainFileInGitAndREADME(
             user,
-            readmePath: readmePosixRelativePath,
-          });
-        } else {
-          md5ToReportedFilesMap.set(md5String, [
-            {
+            readmePosixRelativePath,
+          );
+          let result = md5ToReportedFilesMap.get(md5String);
+
+          if (
+            _.find(result, {
               user,
               readmePath: readmePosixRelativePath,
-            },
-          ]);
-        }
+            })
+          ) {
+            continue;
+          }
 
-        let commits = readmeFilesPattern.commits;
+          if (result) {
+            result.push({
+              user,
+              readmePath: readmePosixRelativePath,
+            });
+          } else {
+            md5ToReportedFilesMap.set(md5String, [
+              {
+                user,
+                readmePath: readmePosixRelativePath,
+              },
+            ]);
+          }
 
-        let latestCommitsRead = cache.users
-          ?.find(
-            userToMatch =>
-              user.name === userToMatch.name &&
-              user.email === userToMatch.email,
-          )
-          ?.files?.filter(
-            file =>
-              file.path === readmePosixRelativePath &&
-              commits.findIndex(commit => file.commit === commit) !== -1,
-          )
-          .map(file => file.commit);
+          let commits = readmeFilesPattern.commits;
 
-        latestCommitsRead?.sort(
-          (a, b) =>
-            commits.findIndex(commit => commit === a) -
-            commits.findIndex(commit => commit === b),
-        );
-        let latestCommitRead = latestCommitsRead?.[0];
-
-        let readmeCommitsByThisUser = _.compact(
-          (
-            await simpleGitObject.raw(
-              'log',
-              '-1',
-              `--author=${user.name} <${user.email}>`,
-              '--pretty=format:%H',
-              readmePosixRelativePath,
+          let latestCommitsRead = cache.users
+            ?.find(
+              userToMatch =>
+                user.name === userToMatch.name &&
+                user.email === userToMatch.email,
             )
-          ).split('\n'),
-        );
+            ?.files?.filter(
+              file =>
+                file.path === readmePosixRelativePath &&
+                commits.findIndex(commit => file.commit === commit) !== -1,
+            )
+            .map(file => file.commit);
 
-        let readmeCommits =
-          latestCommitRead || readmeCommitsByThisUser[0]
-            ? _.compact(
-                (
-                  await simpleGitObject.raw(
-                    'log',
-                    '-1',
-                    '--pretty=format:%H',
-                    readmePosixRelativePath,
-                  )
-                ).split('\n'),
+          latestCommitsRead?.sort(
+            (a, b) =>
+              commits.findIndex(commit => commit === a) -
+              commits.findIndex(commit => commit === b),
+          );
+          let latestCommitRead = latestCommitsRead?.[0];
+
+          let readmeCommitsByThisUser = _.compact(
+            (
+              await simpleGitObject.raw(
+                'log',
+                '-1',
+                '--pretty=format:%H',
+                `--author=${user.name} <${user.email}>`,
+                commitHash,
+                readmePosixRelativePath,
               )
-            : undefined;
-
-        let latestCommitReadToReadmeNowCommitCount = 1;
-
-        if (latestCommitRead) {
-          latestCommitReadToReadmeNowCommitCount = Number(
-            await simpleGitObject.raw(
-              'rev-list',
-              `${latestCommitRead}..${readmeCommits![0]}`,
-              '--count',
-            ),
+            ).split('\n'),
           );
-        }
 
-        let readmeCommitToReadmeNowCommitCount = 1;
+          let readmeCommits =
+            latestCommitRead || readmeCommitsByThisUser[0]
+              ? _.compact(
+                  (
+                    await simpleGitObject.raw(
+                      'log',
+                      '-1',
+                      '--pretty=format:%H',
+                      commitHash,
+                      readmePosixRelativePath,
+                    )
+                  ).split('\n'),
+                )
+              : undefined;
 
-        if (readmeCommitsByThisUser[0]) {
-          readmeCommitToReadmeNowCommitCount = Number(
-            await simpleGitObject.raw(
-              'rev-list',
-              `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
-              '--count',
-            ),
-          );
-        }
+          let latestCommitReadToReadmeNowCommitCount = 1;
 
-        if (
-          latestCommitReadToReadmeNowCommitCount > 0 &&
-          readmeCommitToReadmeNowCommitCount > 0
-        ) {
-          hasReported = true;
+          if (latestCommitRead) {
+            latestCommitReadToReadmeNowCommitCount = Number(
+              await simpleGitObject.raw(
+                'rev-list',
+                `${latestCommitRead}..${readmeCommits![0]}`,
+                '--count',
+              ),
+            );
+          }
 
-          reportError(user, readmePosixRelativePath, commitHash);
+          let readmeCommitToReadmeNowCommitCount = 1;
+
+          if (readmeCommitsByThisUser[0]) {
+            readmeCommitToReadmeNowCommitCount = Number(
+              await simpleGitObject.raw(
+                'rev-list',
+                `${readmeCommitsByThisUser[0]}..${readmeCommits![0]}`,
+                '--count',
+              ),
+            );
+          }
+
+          if (
+            latestCommitReadToReadmeNowCommitCount > 0 &&
+            readmeCommitToReadmeNowCommitCount > 0
+          ) {
+            hasReported = true;
+
+            reportError(user, readmePosixRelativePath, commitHash);
+          }
         }
       }
 
-      for (let commitFile of commitFiles) {
-        let readmeIndex = readmeFilesPatterns.findIndex(
-          readmeFilesPattern =>
-            readmeFilesPattern.readmePosixRelativePath === commitFile,
-        );
+      for (let readmePosixRelativePath of readmePosixRelativePaths) {
+        if (
+          commitFiles.includes(readmePosixRelativePath) ||
+          parents.length > 1
+        ) {
+          let posixRelativePathToReadmeContentMap: Map<string, string>;
 
-        if (readmeIndex !== -1) {
-          if (fromInitialCommit && i === commitHashs.length - 1) {
-            readmeFilesPatterns.splice(readmeIndex, 1);
+          if (
+            !commitHashToPosixRelativePathToReadmeContentMapMap.has(commitHash)
+          ) {
+            posixRelativePathToReadmeContentMap = new Map();
+
+            commitHashToPosixRelativePathToReadmeContentMapMap.set(
+              commitHash,
+              posixRelativePathToReadmeContentMap,
+            );
           } else {
-            try {
-              let readmeContent = await simpleGitObject.show([
-                `${commitHash}^:${readmeFilesPatterns[readmeIndex].readmePosixRelativePath}`,
-              ]);
+            posixRelativePathToReadmeContentMap =
+              commitHashToPosixRelativePathToReadmeContentMapMap.get(
+                commitHash,
+              )!;
+          }
 
-              readmeFilesPatterns[readmeIndex].filesPatterns =
-                getFilesPatternsOfREADME(readmeContent);
+          try {
+            posixRelativePathToReadmeContentMap.set(
+              readmePosixRelativePath,
+              await simpleGitObject.raw(
+                'show',
+                `${commitHash}:${readmePosixRelativePath}`,
+              ),
+            );
+          } catch (e) {
+            // nothing
+          }
+        } else {
+          let posixRelativePathToReadmeContentMap: Map<string, string>;
 
-              readmeFilesPatterns[readmeIndex].commits = _.compact(
-                (
-                  await simpleGitObject.raw(
-                    'log',
-                    `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
-                    '--pretty=format:%H',
-                    readmeFilesPatterns[readmeIndex].readmePosixRelativePath,
-                  )
-                ).split('\n'),
-              );
-            } catch (e) {
-              readmeFilesPatterns.splice(readmeIndex, 1);
-            }
+          if (
+            !commitHashToPosixRelativePathToReadmeContentMapMap.has(commitHash)
+          ) {
+            posixRelativePathToReadmeContentMap = new Map();
+
+            commitHashToPosixRelativePathToReadmeContentMapMap.set(
+              commitHash,
+              posixRelativePathToReadmeContentMap,
+            );
+          } else {
+            posixRelativePathToReadmeContentMap =
+              commitHashToPosixRelativePathToReadmeContentMapMap.get(
+                commitHash,
+              )!;
+          }
+
+          if (
+            commitHashToPosixRelativePathToReadmeContentMapMap
+              .get(parents[0])
+              ?.has(readmePosixRelativePath)
+          ) {
+            posixRelativePathToReadmeContentMap.set(
+              readmePosixRelativePath,
+              commitHashToPosixRelativePathToReadmeContentMapMap
+                .get(parents[0])!
+                .get(readmePosixRelativePath)!,
+            );
           }
         }
       }

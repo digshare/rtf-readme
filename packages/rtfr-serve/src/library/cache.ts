@@ -15,4 +15,5 @@ export interface UserInfo extends RawUserInfo {
 
 export interface Cache {
   users: UserInfo[];
+  commits?: string[];
 }

@@ -56,13 +56,23 @@ export async function writeToConfigFile(
 }
 
 export function getServeUrl(config: Config): string {
-  let slash = config.server.endsWith('/') ? '' : '/';
+  let slash = getSlash(config.server);
 
   return `${config.server}${slash}cache/${config.token}`;
 }
 
 export function getGetTokenUrl(server: string): string {
-  let slash = server.endsWith('/') ? '' : '/';
+  let slash = getSlash(server);
 
   return `${server}${slash}token`;
+}
+
+export function getCacheCommitsUrl(config: Config): string {
+  let slash = getSlash(config.server);
+
+  return `${config.server}${slash}cache-commits/${config.token}`;
+}
+
+function getSlash(server: string): string {
+  return server.endsWith('/') ? '' : '/';
 }

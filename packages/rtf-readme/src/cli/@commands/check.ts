@@ -16,6 +16,7 @@ import {
   MAGIC_GIT_INITIAL_COMMIT,
   README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
+  getCacheCommitsUrl,
   getFilesPatternsOfREADME,
   getGitUserInfo,
   getServeUrl,
@@ -58,8 +59,11 @@ export default class extends Command {
     } catch (e) {
       console.warn('No cache file got.');
 
-      cache = {users: []};
+      cache = {users: [], commits: []};
     }
+
+    let passedCommitSet: Set<string> = new Set(cache.commits || []);
+    let newPassedCommits: string[] = [];
 
     let simpleGitObject = simpleGit(workspacePath);
 
@@ -80,16 +84,11 @@ export default class extends Command {
       pathToPosixPath(Path.relative(workspacePath, readmePath)),
     );
 
-    let commitHashToPosixRelativePathToReadmeContentMapMap: Map<
-      string,
-      Map<string, string>
-    > = new Map();
-
-    let readmePosixRelativePathToreadmeCommitHashs: Map<string, string[]> =
+    let readmePosixRelativePathToreadmeCommitHashsMap: Map<string, string[]> =
       new Map();
 
     for (let readmePosixRelativePath of readmePosixRelativePaths) {
-      readmePosixRelativePathToreadmeCommitHashs.set(
+      readmePosixRelativePathToreadmeCommitHashsMap.set(
         readmePosixRelativePath,
         _.compact(
           (
@@ -137,6 +136,10 @@ export default class extends Command {
     for (let i = commitHashs.length - 1; i >= 0; --i) {
       let commitHash = commitHashs[i];
 
+      if (passedCommitSet.has(commitHash)) {
+        continue;
+      }
+
       let commitFiles = await getCommitFiles(
         simpleGitObject,
         commitHash,
@@ -159,29 +162,19 @@ export default class extends Command {
           readmePosixRelativePaths.map(async readmePosixRelativePath => {
             let content: string;
 
-            if (
-              commitHashToPosixRelativePathToReadmeContentMapMap
-                .get(parents[0])
-                ?.has(readmePosixRelativePath)
-            ) {
-              content = commitHashToPosixRelativePathToReadmeContentMapMap
-                .get(parents[0])!
-                .get(readmePosixRelativePath)!;
-            } else {
-              try {
-                content = await simpleGitObject.raw(
-                  'show',
-                  `${commitHash}:${readmePosixRelativePath}`,
-                );
-              } catch (e) {
-                content = '';
-              }
+            try {
+              content = await simpleGitObject.raw(
+                'show',
+                `${commitHash}:${readmePosixRelativePath}`,
+              );
+            } catch (e) {
+              content = '';
             }
 
             return {
               readmePosixRelativePath,
               filePatterns: getFilesPatternsOfREADME(content),
-              commits: readmePosixRelativePathToreadmeCommitHashs.get(
+              commits: readmePosixRelativePathToreadmeCommitHashsMap.get(
                 readmePosixRelativePath,
               )!,
             };
@@ -324,74 +317,8 @@ export default class extends Command {
             hasReported = true;
 
             reportError(user, readmePosixRelativePath, commitHash);
-          }
-        }
-      }
-
-      for (let readmePosixRelativePath of readmePosixRelativePaths) {
-        if (
-          commitFiles.includes(readmePosixRelativePath) ||
-          parents.length > 1
-        ) {
-          let posixRelativePathToReadmeContentMap: Map<string, string>;
-
-          if (
-            !commitHashToPosixRelativePathToReadmeContentMapMap.has(commitHash)
-          ) {
-            posixRelativePathToReadmeContentMap = new Map();
-
-            commitHashToPosixRelativePathToReadmeContentMapMap.set(
-              commitHash,
-              posixRelativePathToReadmeContentMap,
-            );
           } else {
-            posixRelativePathToReadmeContentMap =
-              commitHashToPosixRelativePathToReadmeContentMapMap.get(
-                commitHash,
-              )!;
-          }
-
-          try {
-            posixRelativePathToReadmeContentMap.set(
-              readmePosixRelativePath,
-              await simpleGitObject.raw(
-                'show',
-                `${commitHash}:${readmePosixRelativePath}`,
-              ),
-            );
-          } catch (e) {
-            // nothing
-          }
-        } else {
-          let posixRelativePathToReadmeContentMap: Map<string, string>;
-
-          if (
-            !commitHashToPosixRelativePathToReadmeContentMapMap.has(commitHash)
-          ) {
-            posixRelativePathToReadmeContentMap = new Map();
-
-            commitHashToPosixRelativePathToReadmeContentMapMap.set(
-              commitHash,
-              posixRelativePathToReadmeContentMap,
-            );
-          } else {
-            posixRelativePathToReadmeContentMap =
-              commitHashToPosixRelativePathToReadmeContentMapMap.get(
-                commitHash,
-              )!;
-          }
-
-          if (
-            commitHashToPosixRelativePathToReadmeContentMapMap
-              .get(parents[0])
-              ?.has(readmePosixRelativePath)
-          ) {
-            posixRelativePathToReadmeContentMap.set(
-              readmePosixRelativePath,
-              commitHashToPosixRelativePathToReadmeContentMapMap
-                .get(parents[0])!
-                .get(readmePosixRelativePath)!,
-            );
+            newPassedCommits.push(commitHash);
           }
         }
       }
@@ -399,7 +326,23 @@ export default class extends Command {
 
     if (hasReported) {
       flushErrors();
+    }
 
+    if (newPassedCommits.length > 0) {
+      let resText = await (
+        await fetch(getCacheCommitsUrl(config), {
+          method: 'post',
+          body: JSON.stringify(newPassedCommits),
+          headers: {'Content-Type': 'application/json'},
+        })
+      ).text();
+
+      if (resText !== 'ok') {
+        console.error('Post newly passed commits failed.');
+      }
+    }
+
+    if (hasReported) {
       throw new ExpectedError("There're some READMEs not read");
     }
   }

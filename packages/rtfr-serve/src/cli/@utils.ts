@@ -27,6 +27,7 @@ export async function newDBRecordAndGetToken(
   }
 
   await db.put(token!, '[]');
+  await db.put(`~${token!}`, '[]');
 
   return token!;
 }

@@ -14,6 +14,8 @@ import {newDBRecordAndGetToken} from '../@utils';
 
 const COOKIE_KEYS = ['rtf-readme-17', 'rtfr-serve'];
 
+const MAX_CACHED_PASSED_COMMITS_NUMBER = 200;
+
 let UserInfo = t.type({
   name: t.string,
   email: t.string,
@@ -75,6 +77,14 @@ export default class extends Command {
 
       let users: RawUserInfo[] = JSON.parse(await db.get(token));
 
+      let commits: string[];
+
+      try {
+        commits = JSON.parse(await db.get(`~${token}`));
+      } catch (e) {
+        commits = [];
+      }
+
       let cache: Cache = {
         users: await Promise.all(
           users.map(async (user: {name: string; email: string}) => {
@@ -88,6 +98,7 @@ export default class extends Command {
             };
           }),
         ),
+        commits,
       };
 
       ctx.body = JSON.stringify(cache);
@@ -158,6 +169,44 @@ export default class extends Command {
 
         ctx.body = 'ok';
       }
+    });
+
+    router.post('/cache-commits/:token', async ctx => {
+      let token = ctx.params.token;
+
+      await db.get(token);
+
+      let newPassedCommits = ctx.request.body as string[];
+
+      if (isLeft(t.array(t.string).decode(newPassedCommits))) {
+        ctx.body = 'newly passed commits in wrong format';
+
+        return;
+      }
+
+      if (newPassedCommits.length === 0) {
+        ctx.body = 'ok';
+
+        return;
+      }
+
+      let oldPassedCommits: string[];
+
+      try {
+        oldPassedCommits = JSON.parse(await db.get(`~${token}`));
+      } catch (e) {
+        oldPassedCommits = [];
+      }
+
+      let passedCommits = _.uniq([...oldPassedCommits, ...newPassedCommits]);
+
+      passedCommits = passedCommits.slice(
+        Math.max(0, passedCommits.length - MAX_CACHED_PASSED_COMMITS_NUMBER),
+      );
+
+      await db.put(`~${token}`, JSON.stringify(passedCommits));
+
+      ctx.body = 'ok';
     });
 
     // delete the input files

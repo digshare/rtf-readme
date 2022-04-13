@@ -1,7 +1,7 @@
 export interface READMEInfo {
   path: string;
   filesPatterns: string[];
-  commit: string;
+  commit: string | undefined;
 }
 
 export interface RawUserInfo {

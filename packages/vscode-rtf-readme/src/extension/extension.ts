@@ -109,10 +109,6 @@ async function loadREADMEFile(
     }
   }
 
-  if (commit === undefined) {
-    return true;
-  }
-
   if (!workspacePathToRTFREADMECacheDict[workspacePosixPath]) {
     workspacePathToRTFREADMECacheDict[workspacePosixPath] = {
       files: [
@@ -532,16 +528,23 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
         continue;
       }
 
-      let commits = _.compact(
-        (
-          await simpleGitObject.raw(
-            'log',
-            `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
-            '--pretty=format:%H',
-            readme.path,
-          )
-        ).split('\n'),
-      );
+      let commits: string[];
+
+      try {
+        commits = _.compact(
+          (
+            await simpleGitObject.raw(
+              'log',
+              `-${README_MAX_NUMBER_OF_COMMITS_CONSIDERED}`,
+              '--pretty=format:%H',
+              readme.path,
+            )
+          ).split('\n'),
+        );
+      } catch (e) {
+        continue;
+      }
+
       let files = user.files.filter(
         file => commits.findIndex(commit => file.commit === commit) !== -1,
       );

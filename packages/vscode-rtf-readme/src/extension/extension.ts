@@ -18,6 +18,7 @@ import {
   globMatch,
   pathToPosixPath,
   posixPathToPath,
+  readConfigFile,
   serverConfigValidate,
 } from 'rtf-readme';
 import {SimpleGit} from 'simple-git';
@@ -245,9 +246,9 @@ async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
 
     if (stat.type === vscode.FileType.File) {
       let config = (workspacePathToConfigDict[workspacePath] =
-        (JSON.parse(
-          (await vscode.workspace.fs.readFile(uri)).toString(),
-        ) as TransformedConfig) || {});
+        ((await readConfigFile(
+          posixPathToPath(uri.path),
+        )) as TransformedConfig) || {});
 
       let response = await fetch(getServeUrl(config));
 
@@ -773,6 +774,10 @@ export async function activate(
           filePath: string;
           fileType: 'file' | 'dir';
         };
+
+        if (eventWithFilePath.filePath.endsWith('.git')) {
+          return;
+        }
 
         let uri = vscode.Uri.file(eventWithFilePath.filePath);
 

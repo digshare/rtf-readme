@@ -18,7 +18,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/makeflow/rtf-readme"
+    "url": "https://github.com/digshare/rtf-readme"
   },
   "main": "./dist/extension.js",
   "activationEvents": [

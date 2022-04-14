@@ -7,7 +7,6 @@ import {
   CONFIG_FILENAME,
   DEFAULT_READMES_TO_BE_CONSIDERED,
   DEFAULT_RTF_README_SERVER,
-  READMEInfo,
   README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
   TransformedConfig,
   UserInfo,
@@ -25,7 +24,9 @@ import {SimpleGit} from 'simple-git';
 
 import * as vscode from 'vscode';
 
-import {FileSystemProvider} from './file-system-provider';
+import {Cache, cacheManager} from './@cache';
+import {FileSystemProvider} from './@file-system-provider';
+import {getDataFromInputBox, getMarkdownTitle} from './@utils';
 
 let output!: vscode.OutputChannel;
 
@@ -33,13 +34,7 @@ let loadREADMEFilePromises: Promise<boolean>[] = [];
 
 let updateCacheFilePromise: Promise<void> = Promise.resolve();
 
-interface RTFREADMECache {
-  files: READMEInfo[];
-  users: UserInfo[];
-}
-
 let workspacePathToConfigDict: {[path: string]: TransformedConfig} = {};
-let workspacePathToRTFREADMECacheDict: {[path: string]: RTFREADMECache} = {};
 
 let workspacePathToGitDict: {[workspacePath: string]: SimpleGit} = {};
 
@@ -66,8 +61,8 @@ async function loadREADMEFile(
       absolutePosixPath,
     );
 
-    if (workspacePathToRTFREADMECacheDict[workspacePosixPath]) {
-      _.remove(workspacePathToRTFREADMECacheDict[workspacePosixPath].files, {
+    if (cacheManager.getCache(workspacePosixPath)) {
+      cacheManager.getCache(workspacePosixPath).removeFile({
         path: relativePath,
       });
     }
@@ -110,40 +105,26 @@ async function loadREADMEFile(
     }
   }
 
-  if (!workspacePathToRTFREADMECacheDict[workspacePosixPath]) {
-    workspacePathToRTFREADMECacheDict[workspacePosixPath] = {
-      files: [
-        {
-          path: relativePath,
-          filesPatterns,
-          commit,
-        },
-      ],
-      users: [],
-    };
-  } else {
-    let readmeInfoIndex = _.findIndex(
-      workspacePathToRTFREADMECacheDict[workspacePosixPath].files,
-      {
-        path: relativePath,
-      },
+  if (!cacheManager.getCache(workspacePosixPath)) {
+    cacheManager.setCache(
+      workspacePosixPath,
+      new Cache({
+        files: [
+          {
+            path: relativePath,
+            filesPatterns,
+            commit,
+          },
+        ],
+        users: [],
+      }),
     );
-
-    if (readmeInfoIndex === -1) {
-      workspacePathToRTFREADMECacheDict[workspacePosixPath].files.push({
-        path: relativePath,
-        filesPatterns,
-        commit,
-      });
-    } else {
-      workspacePathToRTFREADMECacheDict[workspacePosixPath].files[
-        readmeInfoIndex
-      ] = {
-        path: relativePath,
-        filesPatterns,
-        commit,
-      };
-    }
+  } else {
+    cacheManager.getCache(workspacePosixPath).addOrReplaceFile({
+      path: relativePath,
+      filesPatterns,
+      commit,
+    });
   }
 
   return true;
@@ -168,15 +149,15 @@ async function readREADMEFile(
 
   let relativePath = Path.posix.relative(workspacePosixPath, absolutePath);
 
-  let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+  let cache = cacheManager.getCache(workspacePosixPath);
 
   if (!cache) {
-    cache = {
+    cache = new Cache({
       files: [],
       users: [],
-    };
+    });
 
-    workspacePathToRTFREADMECacheDict[workspacePosixPath] = cache;
+    cacheManager.setCache(workspacePosixPath, cache);
   }
 
   let readme = _.find(cache.files, {path: relativePath});
@@ -222,14 +203,12 @@ function deleteREADMEFile(
   absolutePath: string,
   workspacePosixPath: string,
 ): void {
-  let readmes = workspacePathToRTFREADMECacheDict[workspacePosixPath].files;
+  let readmes = cacheManager.getCache(workspacePosixPath).files;
 
   if (readmes) {
-    workspacePathToRTFREADMECacheDict[workspacePosixPath].files =
-      readmes.filter(
-        readme =>
-          readme.path !== Path.posix.relative(workspacePosixPath, absolutePath),
-      );
+    cacheManager.getCache(workspacePosixPath).removeFile({
+      path: Path.posix.relative(workspacePosixPath, absolutePath),
+    });
   } else {
     output.appendLine(
       'Deleting a README file which is not inspected by rtf-README.',
@@ -252,10 +231,13 @@ async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
 
       let response = await fetch(getServeUrl(config));
 
-      workspacePathToRTFREADMECacheDict[workspacePath] = {
-        ...JSON.parse(await response.text()),
-        files: [],
-      };
+      cacheManager.setCache(
+        workspacePath,
+        new Cache({
+          ...JSON.parse(await response.text()),
+          files: [],
+        }),
+      );
 
       await walkThroughFilesToLoadREADME(workspacePath, workspacePath);
 
@@ -275,7 +257,7 @@ async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
 function deleteConfigFile(workspacePath: string): void {
   delete workspacePathToConfigDict[workspacePath];
 
-  delete workspacePathToRTFREADMECacheDict[workspacePath];
+  cacheManager.deleteCache(workspacePath);
 }
 
 async function loadConfigAndGetCacheFiles(): Promise<void> {
@@ -447,9 +429,7 @@ function updateCacheFileWithPromise(
 }
 
 async function hintIfNotRead(absolutePath: string): Promise<void> {
-  for (let [workspacePath, cache] of Object.entries(
-    workspacePathToRTFREADMECacheDict,
-  )) {
+  for (let [workspacePath, cache] of cacheManager.entries) {
     if (!absolutePath.startsWith(workspacePath)) {
       continue;
     }
@@ -714,46 +694,6 @@ async function handleSpecialFilesAndConditionalHint(
   await hintIfNotRead(filePath);
 }
 
-async function getDataFromInputBox(
-  inputBoxInfo: {
-    title: string;
-    prompt?: string;
-  },
-  validate: (data: string) => string | true,
-  defaultValue?: string,
-  // @ts-ignore
-): Promise<string | undefined> {
-  return vscode.window.showInputBox({
-    title: inputBoxInfo.title,
-    prompt: inputBoxInfo.prompt,
-    ignoreFocusOut: true,
-    value: defaultValue,
-    validateInput: value => {
-      let validateResult = validate(value);
-
-      if (validateResult === true) {
-        return '';
-      }
-
-      return validateResult;
-    },
-  });
-}
-
-async function getMarkdownTitle(
-  readmeFilePath: string,
-): Promise<string | undefined> {
-  let readmeFileContent = (
-    await vscode.workspace.fs.readFile(vscode.Uri.file(readmeFilePath))
-  ).toString();
-
-  let matchResult = readmeFileContent.match(
-    /((?<atxlayer>#+)\s*(?<atxname>.+))|((?<setexname>[\w|\d|\s|-]+)\n(?<setexLayer>[-|=]{2,}))/,
-  );
-
-  return matchResult?.[3] || matchResult?.[5];
-}
-
 export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<void> {
@@ -824,8 +764,8 @@ export async function activate(
           delete workspacePathToWatchDisposableDict[removedWorkspacePath];
         }
 
-        if (workspacePathToRTFREADMECacheDict[removedWorkspacePath]) {
-          delete workspacePathToRTFREADMECacheDict[removedWorkspacePath];
+        if (cacheManager.getCache(removedWorkspacePath)) {
+          cacheManager.deleteCache(removedWorkspacePath);
         }
 
         if (workspacePathToGitDict[removedWorkspacePath]) {
@@ -1043,7 +983,7 @@ export async function activate(
       if (workspaceFolders) {
         for (let workspaceFolder of workspaceFolders) {
           let workspacePosixPath = workspaceFolder.uri.path;
-          let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+          let cache = cacheManager.getCache(workspacePosixPath);
 
           if (!cache) {
             continue;
@@ -1157,7 +1097,7 @@ export async function activate(
         if (workspaceFolders) {
           for (let workspaceFolder of workspaceFolders) {
             let workspacePosixPath = workspaceFolder.uri.path;
-            let cache = workspacePathToRTFREADMECacheDict[workspacePosixPath];
+            let cache = cacheManager.getCache(workspacePosixPath);
 
             if (!cache) {
               continue;

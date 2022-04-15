@@ -8,336 +8,61 @@ import {
   DEFAULT_READMES_TO_BE_CONSIDERED,
   DEFAULT_RTF_README_SERVER,
   README_MAX_NUMBER_OF_COMMITS_CONSIDERED,
-  TransformedConfig,
   UserInfo,
-  getFilesPatternsOfREADME,
   getGetTokenUrl,
   getServeUrl,
   getSimpleGitObject,
   globMatch,
   pathToPosixPath,
   posixPathToPath,
-  readConfigFile,
   serverConfigValidate,
 } from 'rtf-readme';
 import {SimpleGit} from 'simple-git';
 
 import * as vscode from 'vscode';
 
-import {Cache, cacheManager} from './@cache';
+import {cacheManager} from './@cache';
+import {configManager} from './@config';
 import {FileSystemProvider} from './@file-system-provider';
+import {gitObjectManager} from './@git-object';
+import {ConfigService, READMEService} from './@services';
 import {getDataFromInputBox, getMarkdownTitle} from './@utils';
 
 let output!: vscode.OutputChannel;
-
-let loadREADMEFilePromises: Promise<boolean>[] = [];
-
 let updateCacheFilePromise: Promise<void> = Promise.resolve();
-
-let workspacePathToConfigDict: {[path: string]: TransformedConfig} = {};
-
-let workspacePathToGitDict: {[workspacePath: string]: SimpleGit} = {};
 
 let workspacePathToWatchDisposableDict: {
   [workspacePath: string]: vscode.Disposable;
 } = {};
 
+let readmeService = new READMEService(
+  output,
+  configManager,
+  cacheManager,
+  gitObjectManager,
+  updateCacheFileWithPromise,
+);
+
+let configService = new ConfigService(
+  output,
+  configManager,
+  cacheManager,
+  readmeService,
+);
+
 enum FileOpenType {
   Opened = 4,
 }
 
-async function loadREADMEFile(
-  absolutePosixPath: string,
-  workspacePosixPath: string,
-): Promise<boolean> {
-  let readmeContent = (
-    await vscode.workspace.fs.readFile(vscode.Uri.file(absolutePosixPath))
-  ).toString();
-  let filesPatterns = getFilesPatternsOfREADME(readmeContent);
-
-  if (filesPatterns.length === 0) {
-    let relativePath = Path.posix.relative(
-      workspacePosixPath,
-      absolutePosixPath,
-    );
-
-    if (cacheManager.getCache(workspacePosixPath)) {
-      cacheManager.getCache(workspacePosixPath).removeFile({
-        path: relativePath,
-      });
-    }
-
-    return false;
-  }
-
-  let relativePath = Path.posix.relative(workspacePosixPath, absolutePosixPath);
-
-  let commit: string | undefined;
-
-  let simpleGitObject = workspacePathToGitDict[workspacePosixPath];
-
-  if (!simpleGitObject) {
-    return true;
-  }
-
-  try {
-    let logResult = _.compact(
-      (
-        await simpleGitObject.raw(
-          'log',
-          '-1',
-          '--pretty=format:%H',
-          posixPathToPath(absolutePosixPath),
-        )
-      ).split('\n'),
-    );
-
-    commit = logResult[0];
-  } catch (e) {
-    if (
-      !(e as any)
-        .toString()
-        .startsWith(
-          "Error: fatal: your current branch 'master' does not have any commits yet",
-        )
-    ) {
-      output.appendLine(`get log failed.\n${(e as any).toString()}`);
-    }
-  }
-
-  if (!cacheManager.getCache(workspacePosixPath)) {
-    cacheManager.setCache(
-      workspacePosixPath,
-      new Cache({
-        files: [
-          {
-            path: relativePath,
-            filesPatterns,
-            commit,
-          },
-        ],
-        users: [],
-      }),
-    );
-  } else {
-    cacheManager.getCache(workspacePosixPath).addOrReplaceFile({
-      path: relativePath,
-      filesPatterns,
-      commit,
-    });
-  }
-
-  return true;
-}
-
-async function readREADMEFile(
-  absolutePath: string,
-  workspacePosixPath: string,
-): Promise<void> {
-  let simpleGitObject = workspacePathToGitDict[workspacePosixPath];
-
-  if (!simpleGitObject) {
-    return;
-  }
-
-  let username = (await simpleGitObject.raw('config', 'user.name')).trim();
-  let email = (await simpleGitObject.raw('config', 'user.email')).trim();
-
-  if (!username || !email) {
-    return;
-  }
-
-  let relativePath = Path.posix.relative(workspacePosixPath, absolutePath);
-
-  let cache = cacheManager.getCache(workspacePosixPath);
-
-  if (!cache) {
-    cache = new Cache({
-      files: [],
-      users: [],
-    });
-
-    cacheManager.setCache(workspacePosixPath, cache);
-  }
-
-  let readme = _.find(cache.files, {path: relativePath});
-
-  if (!readme || !readme.commit) {
-    return;
-  }
-
-  let user = _.find(cache.users, {name: username, email});
-
-  if (!user) {
-    user = {
-      name: username,
-      email,
-      files: [],
-    };
-
-    cache.users.push(user);
-  }
-
-  let file = _.find(user.files, {path: relativePath});
-
-  if (!file) {
-    file = {path: relativePath, commit: readme.commit};
-
-    user.files.push(file);
-  } else if (file.commit !== readme.commit) {
-    file.commit = readme.commit;
-  }
-
-  updateCacheFileWithPromise(workspacePosixPath, {
-    name: user.name,
-    email: user.email,
-    files: [file],
-  });
-
-  output.appendLine(
-    `${new Date().toLocaleString()}: README "${file.path}" read.`,
-  );
-}
-
-function deleteREADMEFile(
-  absolutePath: string,
-  workspacePosixPath: string,
-): void {
-  let readmes = cacheManager.getCache(workspacePosixPath).files;
-
-  if (readmes) {
-    cacheManager.getCache(workspacePosixPath).removeFile({
-      path: Path.posix.relative(workspacePosixPath, absolutePath),
-    });
-  } else {
-    output.appendLine(
-      'Deleting a README file which is not inspected by rtf-README.',
-    );
-  }
-}
-
-async function loadConfigAndGetCacheFile(workspacePath: string): Promise<void> {
-  let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
-  let uri = vscode.Uri.file(configFilePath);
-
-  try {
-    let stat = await vscode.workspace.fs.stat(uri);
-
-    if (stat.type === vscode.FileType.File) {
-      let config = (workspacePathToConfigDict[workspacePath] =
-        ((await readConfigFile(
-          posixPathToPath(uri.path),
-        )) as TransformedConfig) || {});
-
-      let response = await fetch(getServeUrl(config));
-
-      cacheManager.setCache(
-        workspacePath,
-        new Cache({
-          ...JSON.parse(await response.text()),
-          files: [],
-        }),
-      );
-
-      await walkThroughFilesToLoadREADME(workspacePath, workspacePath);
-
-      await Promise.all(loadREADMEFilePromises);
-
-      loadREADMEFilePromises = [];
-    }
-  } catch (e) {
-    output.appendLine(
-      `load config file and cache of workspace ${workspacePath} failed.\n${(
-        e as any
-      ).toString()}`,
-    );
-  }
-}
-
-function deleteConfigFile(workspacePath: string): void {
-  delete workspacePathToConfigDict[workspacePath];
-
-  cacheManager.deleteCache(workspacePath);
-}
-
-async function loadConfigAndGetCacheFiles(): Promise<void> {
-  let workspaceFolders = vscode.workspace.workspaceFolders;
-
-  if (workspaceFolders) {
-    for (let workspaceFolder of workspaceFolders) {
-      await loadConfigAndGetCacheFile(workspaceFolder.uri.path);
-    }
-  }
-}
-
-async function walkThroughFilesToLoadREADME(
-  workspacePosixPath: string,
-  path: string,
-  fileType?: vscode.FileType,
-): Promise<void> {
-  if (!fileType) {
-    try {
-      let stat = await vscode.workspace.fs.stat(vscode.Uri.file(path));
-
-      fileType = stat.type;
-    } catch (e) {
-      output.appendLine(`walk through files error.\n${(e as any).toString()}`);
-
-      return;
-    }
-  }
-
-  let config = workspacePathToConfigDict[workspacePosixPath];
-
-  if (
-    fileType === vscode.FileType.File ||
-    fileType === vscode.FileType.SymbolicLink
-  ) {
-    if (
-      globMatch(
-        path,
-        workspacePosixPath,
-        config.readme || [],
-        config.ignore || [],
-        workspacePosixPath,
-      )
-    ) {
-      loadREADMEFilePromises.push(loadREADMEFile(path, workspacePosixPath));
-    }
-  } else if (fileType === vscode.FileType.Directory) {
-    for (let [fileName, newFileType] of await vscode.workspace.fs.readDirectory(
-      vscode.Uri.file(path),
-    )) {
-      let filePath = Path.posix.resolve(path, fileName);
-
-      if (
-        !globMatch(
-          filePath,
-          workspacePosixPath,
-          config.ignore || [],
-          [],
-          workspacePosixPath,
-        )
-      ) {
-        await walkThroughFilesToLoadREADME(
-          workspacePosixPath,
-          filePath,
-          newFileType,
-        );
-      }
-    }
-  }
-}
-
 async function loadFiles(): Promise<void> {
-  await loadConfigAndGetCacheFiles();
+  await configService.loadConfigAndGetCacheFiles();
 }
 
 async function updateCacheFile(
   workspacePath: string,
   userInfo: UserInfo,
 ): Promise<void> {
-  let config = workspacePathToConfigDict[workspacePath];
+  let config = configManager.getConfig(workspacePath);
 
   try {
     let response = await fetch(getServeUrl(config), {
@@ -370,7 +95,7 @@ async function updateCacheFile(
 
     let responseObject = JSON.parse(responseString);
 
-    let simpleGitObject = workspacePathToGitDict[workspacePath];
+    let simpleGitObject = gitObjectManager.getGitObject(workspacePath);
 
     let readmeRelativePosixPath = userInfo.files[0].path;
 
@@ -434,7 +159,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       continue;
     }
 
-    let config = workspacePathToConfigDict[workspacePath];
+    let config = configManager.getConfig(workspacePath);
 
     if (!config) {
       continue;
@@ -452,7 +177,7 @@ async function hintIfNotRead(absolutePath: string): Promise<void> {
       continue;
     }
 
-    let simpleGitObject = workspacePathToGitDict[workspacePath];
+    let simpleGitObject = gitObjectManager.getGitObject(workspacePath);
 
     if (!simpleGitObject) {
       continue;
@@ -631,7 +356,7 @@ async function handleSpecialFilesAndConditionalHint(
     for (let workspaceFolder of workspaceFolders) {
       let workspacePosixPath = workspaceFolder.uri.path;
 
-      let config = workspacePathToConfigDict[workspacePosixPath];
+      let config = configManager.getConfig(workspacePosixPath);
 
       if (
         Path.posix.dirname(filePath) === workspacePosixPath &&
@@ -640,12 +365,12 @@ async function handleSpecialFilesAndConditionalHint(
         switch (eventType) {
           case vscode.FileChangeType.Changed:
           case vscode.FileChangeType.Created:
-            await loadConfigAndGetCacheFile(workspacePosixPath);
+            await configService.loadConfigAndGetCacheFile(workspacePosixPath);
 
             break;
 
           case vscode.FileChangeType.Deleted:
-            deleteConfigFile(workspacePosixPath);
+            configService.deleteConfigFile(workspacePosixPath);
 
             break;
 
@@ -671,14 +396,16 @@ async function handleSpecialFilesAndConditionalHint(
           case vscode.FileChangeType.Changed:
           case vscode.FileChangeType.Created:
           case FileOpenType.Opened:
-            if (await loadREADMEFile(filePath, workspacePosixPath)) {
-              await readREADMEFile(filePath, workspacePosixPath);
+            if (
+              await readmeService.loadREADMEFile(filePath, workspacePosixPath)
+            ) {
+              await readmeService.readREADMEFile(filePath, workspacePosixPath);
             }
 
             break;
 
           case vscode.FileChangeType.Deleted:
-            deleteREADMEFile(filePath, workspacePosixPath);
+            readmeService.deleteREADMEFile(filePath, workspacePosixPath);
 
             break;
 
@@ -692,6 +419,219 @@ async function handleSpecialFilesAndConditionalHint(
   }
 
   await hintIfNotRead(filePath);
+}
+
+async function createConfigCommand(): Promise<void> {
+  let editor = vscode.window.activeTextEditor;
+  let workspacePath: string | undefined;
+
+  if (!editor) {
+    output.appendLine("You don't have any opened files.");
+    output.appendLine(
+      'rtf-README extension will create a config file for the first workspace folder.',
+    );
+
+    workspacePath = vscode.workspace.workspaceFolders?.[0].uri.path;
+
+    if (!workspacePath) {
+      output.appendLine(
+        "There's no workspaceFolder that this extension could get.",
+      );
+
+      return;
+    }
+  } else {
+    let activeFilePath = editor.document.fileName;
+
+    workspacePath = vscode.workspace.workspaceFolders?.find(workspaceFolder =>
+      activeFilePath.startsWith(workspaceFolder.uri.path),
+    )?.uri.path;
+
+    if (!workspacePath) {
+      output.appendLine(
+        `There's no workspaceFolder that match active file path ${activeFilePath}.`,
+      );
+      output.appendLine(
+        'rtf-README extension will create a config file for the first workspace folder.',
+      );
+
+      workspacePath = vscode.workspace.workspaceFolders?.[0].uri.path;
+
+      if (!workspacePath) {
+        output.appendLine(
+          "There's no workspaceFolder that this extension could get.",
+        );
+
+        return;
+      }
+    }
+  }
+
+  let server = await getDataFromInputBox(
+    {
+      title: 'The URL of rtf-README server.',
+    },
+    serverConfigValidate,
+    DEFAULT_RTF_README_SERVER,
+  );
+
+  if (server === undefined) {
+    return;
+  }
+
+  let tokenResponse = await fetch(getGetTokenUrl(server));
+
+  if (tokenResponse.status !== 200) {
+    output.appendLine('rtfr.createConfigFile: fetching token failed.');
+
+    vscode.window
+      .showErrorMessage(
+        'Create config failed because fetching token from server failed.',
+      )
+      .then(
+        () => {},
+        err => err && output.appendLine(err.toString()),
+      );
+
+    return;
+  }
+
+  let token = await tokenResponse.text();
+
+  let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
+
+  await vscode.workspace.fs.writeFile(
+    vscode.Uri.file(configFilePath),
+    new TextEncoder().encode(
+      `${JSON.stringify(
+        {
+          server,
+          token,
+          ignore: ['**/node_modules/**'],
+          readme: DEFAULT_READMES_TO_BE_CONSIDERED,
+        },
+        undefined,
+        2,
+      )}\n`,
+    ),
+  );
+}
+
+async function showREADMEsCommand(): Promise<void> {
+  if (!vscode.window.activeTextEditor) {
+    output.appendLine("rtfr.showREADMEs: You haven't opened any files.");
+
+    return;
+  }
+
+  let filePath = vscode.window.activeTextEditor.document.fileName;
+
+  if (Path.posix.basename(filePath) === filePath) {
+    output.appendLine('rtfr.showREADMEs: Current Focused is not a file');
+
+    return;
+  }
+
+  let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
+    workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
+  );
+
+  let readmeFilePathsSplitByWorkspace: string[][] = [];
+
+  if (workspaceFolders) {
+    for (let workspaceFolder of workspaceFolders) {
+      let workspacePosixPath = workspaceFolder.uri.path;
+      let cache = cacheManager.getCache(workspacePosixPath);
+
+      if (!cache) {
+        continue;
+      }
+
+      let config = configManager.getConfig(workspacePosixPath);
+
+      let readmeFilePaths: string[] = [workspacePosixPath];
+
+      for (let readme of cache.files) {
+        if (
+          globMatch(
+            filePath,
+            Path.posix.dirname(
+              Path.posix.join(workspacePosixPath, readme.path),
+            ),
+            readme.filesPatterns,
+            config.ignore || [],
+            workspacePosixPath,
+          )
+        ) {
+          readmeFilePaths.push(readme.path);
+        }
+      }
+
+      readmeFilePathsSplitByWorkspace.push(readmeFilePaths);
+    }
+  }
+
+  readmeFilePathsSplitByWorkspace = readmeFilePathsSplitByWorkspace.filter(
+    readmeFilePaths => readmeFilePaths.length > 1,
+  );
+
+  vscode.window
+    .showQuickPick(
+      _.flatten(
+        await Promise.all(
+          readmeFilePathsSplitByWorkspace.map(async readmeFilePaths => {
+            return [
+              {
+                label: readmeFilePaths[0],
+                kind: vscode.QuickPickItemKind.Separator,
+              },
+              ...(await Promise.all(
+                readmeFilePaths.slice(1).map(async readmeFilePath => ({
+                  label: Path.posix.basename(readmeFilePath),
+                  description:
+                    Path.posix.dirname(readmeFilePath) === '.'
+                      ? undefined
+                      : Path.posix.dirname(readmeFilePath),
+                  workspacePosixPath: readmeFilePaths[0],
+                  detail: await getMarkdownTitle(
+                    Path.posix.resolve(readmeFilePaths[0], readmeFilePath),
+                  ),
+                })),
+              )),
+            ] as (vscode.QuickPickItem & {workspacePosixPath: string})[];
+          }),
+        ),
+      ),
+      {
+        placeHolder:
+          readmeFilePathsSplitByWorkspace.length > 0
+            ? 'Search README files by name'
+            : 'No README files associated with this file',
+        matchOnDescription: true,
+        matchOnDetail: true,
+      },
+    )
+    .then(item => {
+      if (!item) {
+        return;
+      }
+
+      return vscode.window.showTextDocument(
+        vscode.Uri.file(
+          item.description
+            ? Path.posix.join(
+                item.workspacePosixPath!,
+                item.description,
+                item.label,
+              )
+            : Path.posix.join(item.workspacePosixPath!, item.label),
+        ),
+      );
+    })
+    .then(
+      () => {},
+      err => err && output.appendLine(err.toString()),
+    );
 }
 
 export async function activate(
@@ -738,7 +678,7 @@ export async function activate(
 
         workspacePathToWatchDisposableDict[addedWorkspacePath] = disposable;
 
-        await loadConfigAndGetCacheFile(addedWorkspacePath);
+        await configService.loadConfigAndGetCacheFile(addedWorkspacePath);
 
         let simpleGitObject: SimpleGit | undefined = getSimpleGitObject(
           posixPathToPath(addedWorkspacePath),
@@ -748,7 +688,7 @@ export async function activate(
           continue;
         }
 
-        workspacePathToGitDict[addedWorkspacePath] = simpleGitObject;
+        gitObjectManager.setGitObject(addedWorkspacePath, simpleGitObject);
       }
 
       for (let removedWorkspace of event.removed) {
@@ -768,11 +708,11 @@ export async function activate(
           cacheManager.deleteCache(removedWorkspacePath);
         }
 
-        if (workspacePathToGitDict[removedWorkspacePath]) {
-          delete workspacePathToGitDict[removedWorkspacePath];
+        if (gitObjectManager.getGitObject(removedWorkspacePath)) {
+          gitObjectManager.deleteGitObject(removedWorkspacePath);
         }
 
-        delete workspacePathToConfigDict[removedWorkspacePath];
+        configManager.deleteConfig(removedWorkspacePath);
       }
     }),
   );
@@ -790,7 +730,7 @@ export async function activate(
           for (let workspaceFolder of workspaceFolders) {
             let workspacePosixPath = workspaceFolder.uri.path;
 
-            let config = workspacePathToConfigDict[workspacePosixPath];
+            let config = configManager.getConfig(workspacePosixPath);
 
             if (!config) {
               continue;
@@ -805,7 +745,7 @@ export async function activate(
                 workspacePosixPath,
               )
             ) {
-              await readREADMEFile(filePath, workspacePosixPath);
+              await readmeService.readREADMEFile(filePath, workspacePosixPath);
             }
           }
         }
@@ -816,102 +756,10 @@ export async function activate(
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('rtfr.createConfigFile', async () => {
-      let editor = vscode.window.activeTextEditor;
-      let workspacePath: string | undefined;
-
-      if (!editor) {
-        output.appendLine("You don't have any opened files.");
-        output.appendLine(
-          'rtf-README extension will create a config file for the first workspace folder.',
-        );
-
-        workspacePath = vscode.workspace.workspaceFolders?.[0].uri.path;
-
-        if (!workspacePath) {
-          output.appendLine(
-            "There's no workspaceFolder that this extension could get.",
-          );
-
-          return;
-        }
-      } else {
-        let activeFilePath = editor.document.fileName;
-
-        workspacePath = vscode.workspace.workspaceFolders?.find(
-          workspaceFolder =>
-            activeFilePath.startsWith(workspaceFolder.uri.path),
-        )?.uri.path;
-
-        if (!workspacePath) {
-          output.appendLine(
-            `There's no workspaceFolder that match active file path ${activeFilePath}.`,
-          );
-          output.appendLine(
-            'rtf-README extension will create a config file for the first workspace folder.',
-          );
-
-          workspacePath = vscode.workspace.workspaceFolders?.[0].uri.path;
-
-          if (!workspacePath) {
-            output.appendLine(
-              "There's no workspaceFolder that this extension could get.",
-            );
-
-            return;
-          }
-        }
-      }
-
-      let server = await getDataFromInputBox(
-        {
-          title: 'The URL of rtf-README server.',
-        },
-        serverConfigValidate,
-        DEFAULT_RTF_README_SERVER,
-      );
-
-      if (server === undefined) {
-        return;
-      }
-
-      let tokenResponse = await fetch(getGetTokenUrl(server));
-
-      if (tokenResponse.status !== 200) {
-        output.appendLine('rtfr.createConfigFile: fetching token failed.');
-
-        vscode.window
-          .showErrorMessage(
-            'Create config failed because fetching token from server failed.',
-          )
-          .then(
-            () => {},
-            err => err && output.appendLine(err.toString()),
-          );
-
-        return;
-      }
-
-      let token = await tokenResponse.text();
-
-      let configFilePath = Path.posix.resolve(workspacePath, CONFIG_FILENAME);
-
-      await vscode.workspace.fs.writeFile(
-        vscode.Uri.file(configFilePath),
-        new TextEncoder().encode(
-          `${JSON.stringify(
-            {
-              server,
-              token,
-              ignore: ['**/node_modules/**'],
-              readme: DEFAULT_READMES_TO_BE_CONSIDERED,
-            },
-            undefined,
-            2,
-          )}\n`,
-        ),
-      );
-    }),
+    vscode.commands.registerCommand(
+      'rtfr.createConfigFile',
+      createConfigCommand,
+    ),
   );
 
   for (let workspaceFolder of vscode.workspace.workspaceFolders || []) {
@@ -925,7 +773,7 @@ export async function activate(
       continue;
     }
 
-    workspacePathToGitDict[workspacePosixPath] = simpleGitObject;
+    gitObjectManager.setGitObject(workspacePosixPath, simpleGitObject);
   }
 
   await loadFiles();
@@ -959,122 +807,7 @@ export async function activate(
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('rtfr.showREADMEs', async () => {
-      if (!vscode.window.activeTextEditor) {
-        output.appendLine("rtfr.showREADMEs: You haven't opened any files.");
-
-        return;
-      }
-
-      let filePath = vscode.window.activeTextEditor.document.fileName;
-
-      if (Path.posix.basename(filePath) === filePath) {
-        output.appendLine('rtfr.showREADMEs: Current Focused is not a file');
-
-        return;
-      }
-
-      let workspaceFolders = vscode.workspace.workspaceFolders?.filter(
-        workspaceFolder => filePath.startsWith(workspaceFolder.uri.path),
-      );
-
-      let readmeFilePathsSplitByWorkspace: string[][] = [];
-
-      if (workspaceFolders) {
-        for (let workspaceFolder of workspaceFolders) {
-          let workspacePosixPath = workspaceFolder.uri.path;
-          let cache = cacheManager.getCache(workspacePosixPath);
-
-          if (!cache) {
-            continue;
-          }
-
-          let config = workspacePathToConfigDict[workspacePosixPath];
-
-          let readmeFilePaths: string[] = [workspacePosixPath];
-
-          for (let readme of cache.files) {
-            if (
-              globMatch(
-                filePath,
-                Path.posix.dirname(
-                  Path.posix.join(workspacePosixPath, readme.path),
-                ),
-                readme.filesPatterns,
-                config.ignore || [],
-                workspacePosixPath,
-              )
-            ) {
-              readmeFilePaths.push(readme.path);
-            }
-          }
-
-          readmeFilePathsSplitByWorkspace.push(readmeFilePaths);
-        }
-      }
-
-      readmeFilePathsSplitByWorkspace = readmeFilePathsSplitByWorkspace.filter(
-        readmeFilePaths => readmeFilePaths.length > 1,
-      );
-
-      vscode.window
-        .showQuickPick(
-          _.flatten(
-            await Promise.all(
-              readmeFilePathsSplitByWorkspace.map(async readmeFilePaths => {
-                return [
-                  {
-                    label: readmeFilePaths[0],
-                    kind: vscode.QuickPickItemKind.Separator,
-                  },
-                  ...(await Promise.all(
-                    readmeFilePaths.slice(1).map(async readmeFilePath => ({
-                      label: Path.posix.basename(readmeFilePath),
-                      description:
-                        Path.posix.dirname(readmeFilePath) === '.'
-                          ? undefined
-                          : Path.posix.dirname(readmeFilePath),
-                      workspacePosixPath: readmeFilePaths[0],
-                      detail: await getMarkdownTitle(
-                        Path.posix.resolve(readmeFilePaths[0], readmeFilePath),
-                      ),
-                    })),
-                  )),
-                ] as (vscode.QuickPickItem & {workspacePosixPath: string})[];
-              }),
-            ),
-          ),
-          {
-            placeHolder:
-              readmeFilePathsSplitByWorkspace.length > 0
-                ? 'Search README files by name'
-                : 'No README files associated with this file',
-            matchOnDescription: true,
-            matchOnDetail: true,
-          },
-        )
-        .then(item => {
-          if (!item) {
-            return;
-          }
-
-          return vscode.window.showTextDocument(
-            vscode.Uri.file(
-              item.description
-                ? Path.posix.join(
-                    item.workspacePosixPath!,
-                    item.description,
-                    item.label,
-                  )
-                : Path.posix.join(item.workspacePosixPath!, item.label),
-            ),
-          );
-        })
-        .then(
-          () => {},
-          err => err && output.appendLine(err.toString()),
-        );
-    }),
+    vscode.commands.registerCommand('rtfr.showREADMEs', showREADMEsCommand),
   );
 
   context.subscriptions.push(
@@ -1103,7 +836,7 @@ export async function activate(
               continue;
             }
 
-            let config = workspacePathToConfigDict[workspacePosixPath];
+            let config = configManager.getConfig(workspacePosixPath);
 
             for (let readme of cache.files) {
               if (

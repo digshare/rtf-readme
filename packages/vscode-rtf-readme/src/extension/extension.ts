@@ -19,6 +19,7 @@ import {
 } from 'rtf-readme';
 import {SimpleGit} from 'simple-git';
 
+// eslint-disable-next-line @mufan/reference-missing-proof
 import * as vscode from 'vscode';
 
 import {cacheManager} from './@cache';

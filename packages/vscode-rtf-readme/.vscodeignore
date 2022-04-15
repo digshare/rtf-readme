@@ -18,3 +18,4 @@ packages/**
 rtf-readme-db
 *.vsix
 bld/**
+scripts/**

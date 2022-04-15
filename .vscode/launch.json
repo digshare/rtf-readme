@@ -9,15 +9,14 @@
         "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-rtf-readme"
       ],
       "outFiles": ["${workspaceFolder}/packages/vscode-rtf-readme/bld/**/*.js"],
-      "preLaunchTask": "${defaultBuildTask}"
+      "preLaunchTask": "prelaunch-tasks"
     },
     {
       "name": "Extension Tests",
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "${workspaceFolder}/packages/vscode-rtf-readme/test/workspace",
-        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/vscode-rtf-readme",
         "--extensionTestsPath=${workspaceFolder}/packages/vscode-rtf-readme/bld/extension/test/suite/index"
       ],
       "outFiles": [

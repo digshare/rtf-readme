@@ -40,7 +40,7 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "yarn esbuild-base -- --minify",
+    "vscode:prepublish": "node ./scripts/prepublish-change-main.js && yarn esbuild-base -- --minify",
     "esbuild-base": "esbuild ./src/extension/extension.ts --bundle --outfile=./dist/extension.js --external:vscode --format=cjs --platform=node"
   },
   "dependencies": {
@@ -60,6 +60,7 @@
     "@types/node-fetch": "^2.6.1",
     "@types/rimraf": "^3.0.2",
     "@types/vscode": "^1.64.0",
-    "esbuild": "^0.14.23"
+    "esbuild": "^0.14.23",
+    "glob": "^8.0.1"
   }
 }

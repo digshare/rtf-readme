@@ -3,6 +3,7 @@
   "tasks": [
     {
       "type": "npm",
+      "label": "watch-task",
       "script": "watch",
       "problemMatcher": "$tsc-watch",
       "isBackground": true,
@@ -13,6 +14,16 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "prelaunch-task",
+      "type": "shell",
+      "command": "node",
+      "args": ["./packages/vscode-rtf-readme/scripts/prelaunch.js"]
+    },
+    {
+      "label": "prelaunch-tasks",
+      "dependsOn": ["watch-task", "prelaunch-task"]
     }
   ]
 }

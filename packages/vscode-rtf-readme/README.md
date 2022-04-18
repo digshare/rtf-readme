@@ -1,8 +1,8 @@
 # Vscode extension rtf-README.
 
-This extension is used to help users find the situation that files are changed but the README concerning these files is not read.
+This extension is used to help users find the situation that files are changed while the README concerning these files is not read.
 
-To use this extension, firstly, you should use command "rtfr-serve" of the CLI provided by the package [rtfr-serve](https://www.npmjs.com/package/rtfr-serve) to run a server. And secondly, you should use subcommand "init" provided by the package [rtf-readme](https://www.npmjs.com/package/rtf-readme) to create a config file named ".rtfrrc".
+Read [README.md](https://github.com/digshare/rtf-readme/blob/main/README.md) of the project which includes this extension to learn how to use this extension.
 
 #### Contributes
 
@@ -45,7 +45,15 @@ interface RTFReadmeConfig {
 
 (1) Display on top of the active editor how many READMEs is associated current active file.
 
+   <center>
+     <img alt="rtf-README prompt" src="https://user-images.githubusercontent.com/10010805/163745300-75242ab7-aea2-4dec-9ae6-41298683e42a.png">
+   </center>
+
 (2) Show hint information message at the bottom right of vscode's window if you need to read some README.
+
+   <center>
+     <img width="480" alt="rtf-README prompt" src="https://user-images.githubusercontent.com/970430/159254726-9a9918c2-9852-4954-90b1-d27c5e966d85.png">
+   </center>
 
 ## Extension Settings
 
